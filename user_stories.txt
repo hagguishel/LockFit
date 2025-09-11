@@ -28,6 +28,7 @@ COULD HAVE:
 --- L'utilisateur doit recevoir un badge si il entraine un groupe musculaire plusieurs fois (par semaines consécutives).
 --- L'utilisateur doit pouvoir voir sa progression dans l'onglet Accueil, avec un graphique montrant sa régularité et sa progression.
 
+
 WONT'HAVE:
 - En tant qu'utilisateur, je veux pouvoir partager mes entrainements, mes séances et ma progression grâce au module social intégré dans l'application.
 -- Critères d'acceptations:
