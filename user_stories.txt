@@ -1,0 +1,35 @@
+User stories:
+
+MUST HAVE:
+- En tant qu'utilisateur debutant, je veux parcourir un catalogue d'exercices classés par groupes musculaires, afin de trouver facilement ce dont j'ai besoin.
+-- Critères d'acceptations:
+--- L'utilisateur peut créer un nouvel entrainement.
+--- L'utilisateur peut supprimer un entrainement déjà existant.
+--- Chaque exercice contient, un nom, un nombre de séries, un nombre de répétitions, et un temps de repos.
+
+- En tant qu'utilisateur (debutant ou veteran), je veux pouvoir créer un compte et sauvegarder mes séances afin de suivre ma progression, et garder mes données sécurisées.
+-- Critères d'acceptations:
+--- L’utilisateur peut s’inscrire avec email et mot de passe.
+--- Un second facteur d’authentification est requis (TOTP ou passkey).
+--- Le compte est créé uniquement si les deux étapes sont validées.
+
+
+SHOULD HAVE:
+- En tant qu'utilisateur, je veux recevoir des notifications pour me rappeler que je dois être rigoureux dans mon entrainement.
+-- Critères d'acceptations:
+--- Un envoi de notification est envoyé a l'utilisateur si il n'a pas ouvert l'application depuis un certain temps.
+--- Un rappel est envoyé lors de l'entrainement lorsque l'utilisateur a terminé son temps de repos.
+
+
+COULD HAVE:
+- En tant qu'utilisateur, je veux voir ma progression grâce a un graphique, un historique, et recevoir des recompenses par rapport à ma progression.
+-- Critères d'acceptations:
+--- L'utilisateur doit recevoir un petit badge si il s'entraine regulièrement.
+--- L'utilisateur doit recevoir un badge si il entraine un groupe musculaire plusieurs fois (par semaines consécutives).
+--- L'utilisateur doit pouvoir voir sa progression dans l'onglet Accueil, avec un graphique montrant sa régularité et sa progression.
+
+WONT'HAVE:
+- En tant qu'utilisateur, je veux pouvoir partager mes entrainements, mes séances et ma progression grâce au module social intégré dans l'application.
+-- Critères d'acceptations:
+--- L'utilisateur doit pouvoir accéder au module social, commenter, aimer, et partager les posts des autres utilisateurs, si et seulement si il s'est inscrit sur l'application.
+--- L'utilisateur doit pouvoir modifier son profil, mettre une biographie, changer sa photo de profil et suivre qutodiennement d'autres utilisateurs.
