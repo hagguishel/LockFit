@@ -22,13 +22,13 @@
 - 🔐 **Authentification sécurisée** : email + MFA (TOTP, Passkeys), Argon2, chiffrement des données.
 - 🏋️ **Gestion des entraînements** : ajout/édition/suppression d’exercices avec séries, répétitions et temps de repos.
 - 📊 **Suivi des performances** : historique, statistiques, graphiques.
-- 🤝 **Module social** : partage des progrès, motivation de groupe.
-- 🔔 **Notifications push** : rappels d’entraînement et alertes sécurité.
 
 ### 🔮 Fonctionnalités futures
 - 🎮 Gamification (leaderboard, badges, récompenses).
 - 📱 Intégration avec wearables (montres connectées, capteurs).
 - 💬 Chat et communauté intégrée.
+- 🤝 **Module social** : partage des progrès, motivation de groupe.
+- 🔔 **Notifications push** : rappels d’entraînement et alertes sécurité.
 
 ---
 
