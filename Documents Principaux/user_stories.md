@@ -4,6 +4,46 @@
 
 ## MUST HAVE
 
+### 🏋️ Gestion des entraînements et du planning
+
+#### US-PLAN-01 — Créer un entraînement
+En tant qu’utilisateur, je veux créer une séance avec des exercices, afin de planifier mon entraînement.
+
+**Critères d’acceptation**
+- [ ] Chaque exercice contient : nom, répétitions, séries, temps de repos, méthode.
+- [ ] L’utilisateur peut sauvegarder la séance.
+- [ ] Modification/suppression possibles.
+
+---
+
+#### US-PLAN-02 — Parcourir le catalogue d’exercices
+En tant qu’utilisateur, je veux parcourir un catalogue d’exercices par groupe musculaire, afin de trouver facilement mes mouvements.
+
+**Critères d’acceptation**
+- [ ] Exercices classés par groupe musculaire.
+- [ ] Filtres disponibles (muscle, matériel, niveau).
+
+---
+
+#### US-PLAN-03 — Créer un planning
+En tant qu’utilisateur, je veux créer un planning d’entraînement, afin d’organiser mes séances sur la durée.
+
+**Critères d’acceptation**
+- [ ] Définir un nom et une durée.
+- [ ] Associer des séances à des jours spécifiques.
+- [ ] Modifier ou supprimer un planning.
+
+---
+
+#### US-PLAN-04 — Suivre l’exécution du planning
+En tant qu’utilisateur, je veux marquer mes séances planifiées comme “faites”, afin de suivre mon avancement.
+
+**Critères d’acceptation**
+- [ ] Une séance planifiée peut être cochée comme “terminée”.
+- [ ] Elle est ensuite envoyée dans l’historique.
+
+---
+
 ### 🔐 Authentification sécurisée (MFA, chiffrement, RGPD)
 
 #### US-ACCT-01 — Création de compte
@@ -80,46 +120,6 @@ En tant qu’utilisateur, je veux ajouter ou modifier mon avatar, afin de person
 
 ---
 
-### 🏋️ Gestion des entraînements et du planning
-
-#### US-PLAN-01 — Créer un entraînement
-En tant qu’utilisateur, je veux créer une séance avec des exercices, afin de planifier mon entraînement.
-
-**Critères d’acceptation**
-- [ ] Chaque exercice contient : nom, répétitions, séries, temps de repos, méthode.
-- [ ] L’utilisateur peut sauvegarder la séance.
-- [ ] Modification/suppression possibles.
-
----
-
-#### US-PLAN-02 — Parcourir le catalogue d’exercices
-En tant qu’utilisateur, je veux parcourir un catalogue d’exercices par groupe musculaire, afin de trouver facilement mes mouvements.
-
-**Critères d’acceptation**
-- [ ] Exercices classés par groupe musculaire.
-- [ ] Filtres disponibles (muscle, matériel, niveau).
-
----
-
-#### US-PLAN-03 — Créer un planning
-En tant qu’utilisateur, je veux créer un planning d’entraînement, afin d’organiser mes séances sur la durée.
-
-**Critères d’acceptation**
-- [ ] Définir un nom et une durée.
-- [ ] Associer des séances à des jours spécifiques.
-- [ ] Modifier ou supprimer un planning.
-
----
-
-#### US-PLAN-04 — Suivre l’exécution du planning
-En tant qu’utilisateur, je veux marquer mes séances planifiées comme “faites”, afin de suivre mon avancement.
-
-**Critères d’acceptation**
-- [ ] Une séance planifiée peut être cochée comme “terminée”.
-- [ ] Elle est ensuite envoyée dans l’historique.
-
----
-
 ### 📊 Suivi des performances
 
 #### US-STATS-01 — Historique des séances
@@ -143,7 +143,9 @@ En tant qu’utilisateur, je veux voir des graphiques, afin de mesurer ma progre
 
 ---
 
-### 🔔 Notifications (SHOULD HAVE)
+## SHOULD HAVE
+
+### 🔔 Notifications
 
 #### US-NOTIF-01 — Notification d’inactivité
 En tant qu’utilisateur, je veux recevoir une notification si je n’ai pas ouvert l’app depuis X jours, afin de rester motivé.
@@ -162,7 +164,9 @@ En tant qu’utilisateur, je veux recevoir un rappel quand mon temps de repos es
 
 ---
 
-### 🏅 Gamification (COULD HAVE)
+## COULD HAVE
+
+### 🏅 Gamification
 
 #### US-GAME-01 — Badges d’assiduité
 En tant qu’utilisateur, je veux obtenir un badge si je m’entraîne régulièrement, afin de rester motivé.
@@ -174,7 +178,9 @@ En tant qu’utilisateur, je veux obtenir un badge si je m’entraîne réguliè
 
 ---
 
-### 🌐 Module social (WON’T HAVE pour MVP)
+## WON’T HAVE (MVP)
+
+### 🌐 Module social
 
 #### US-SOCIAL-01 — Partage et interactions
 En tant qu’utilisateur, je veux partager mes séances et interagir avec d’autres, afin de me motiver.
@@ -186,7 +192,7 @@ En tant qu’utilisateur, je veux partager mes séances et interagir avec d’au
 
 ---
 
-## ⚙️ Notes techniques générales (issues du cadrage)
+## ⚙️ Notes techniques générales
 
 - **Front-end** : React Native + Expo (TypeScript), NativeWind (styling), React Navigation.
 - **Back-end** : NestJS (Node.js + TypeScript), Prisma ORM.
