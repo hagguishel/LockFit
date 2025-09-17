@@ -1,130 +1,202 @@
-# 📌 User Stories LockFit (MoSCoW – Fonctionnel + Technique)
+# 📌 User Stories LockFit (MoSCoW – détaillé)
 
 ---
 
 ## MUST HAVE
 
-### 1. Parcourir et gérer les exercices
-**User Story**
-En tant qu’utilisateur débutant, je veux parcourir un catalogue d’exercices organisés par groupes musculaires, afin de trouver facilement ceux dont j’ai besoin et planifier mes séances.
+### 🔐 Authentification sécurisée (MFA, chiffrement, RGPD)
+
+#### US-ACCT-01 — Création de compte
+En tant qu’utilisateur, je veux créer un compte avec email et mot de passe, afin de sauvegarder mes données et y accéder de manière sécurisée.
 
 **Critères d’acceptation**
-- [ ] Le catalogue affiche les exercices par groupes musculaires.
-- [ ] Chaque exercice contient : nom, description, séries, répétitions, temps de repos.
-- [ ] L’utilisateur peut filtrer par muscle, niveau, matériel.
-- [ ] L’utilisateur peut créer, modifier et supprimer une séance.
+- [ ] L’utilisateur saisit un email valide.
+- [ ] Le mot de passe est stocké via **Argon2**.
+- [ ] Un compte ne peut être créé qu’une seule fois par email.
 
 **Notes techniques**
-- Table `exercises`: `id`, `name`, `muscle_group`, `level`, `equipment`, `description`.
-- Table `workouts`: `id`, `user_id`, `date`, `exercises[]`.
-- Front : React Native (catalogue + filtres).
-- Back : NestJS API + Prisma ORM.
+- Backend : **NestJS + Passport-JWT**.
+- Base de données : **PostgreSQL** (chiffrement natif, RLS).
 
-**Mockups à prévoir**
-- Catalogue avec filtres.
-- Création de séance.
-- Liste des séances sauvegardées.
+**Mockup**
+- Écran inscription.
 
 ---
 
-### 2. Création de compte sécurisé
-**User Story**
-En tant qu’utilisateur, je veux créer un compte sécurisé avec MFA, afin de protéger mes données.
+#### US-ACCT-02 — Authentification forte (MFA)
+En tant qu’utilisateur, je veux activer l’authentification forte (MFA), afin de protéger mon compte.
 
 **Critères d’acceptation**
-- [ ] Inscription avec email + mot de passe.
-- [ ] Validation MFA (TOTP ou passkey).
-- [ ] Connexion uniquement après validation MFA.
-- [ ] Déconnexion possible.
+- [ ] L’utilisateur choisit entre TOTP (Google Authenticator) ou Passkey (WebAuthn).
+- [ ] Connexion validée uniquement si mot de passe + MFA corrects.
+- [ ] Les sessions utilisent **JWT + Refresh**.
 
 **Notes techniques**
-- Auth avec **NestJS + Passport-JWT**.
-- MFA : **otplib** (TOTP) + **@simplewebauthn/server** (Passkeys).
-- Hash sécurisé avec Argon2.
-- Tokens : JWT + Refresh.
-- Stockage PostgreSQL avec chiffrement des champs sensibles.
+- MFA : **otplib** (TOTP), **@simplewebauthn/server** (Passkeys).
+- Tokens stockés côté mobile via **expo-secure-store**.
 
-**Mockups à prévoir**
-- Écran inscription + MFA.
-- Écran connexion sécurisée.
+**Mockup**
+- Écran validation MFA.
 
 ---
 
-### 3. Suivi des performances
-**User Story**
-En tant qu’utilisateur, je veux consulter mon historique et mes statistiques, afin de suivre ma progression.
+#### US-ACCT-03 — Connexion / déconnexion
+En tant qu’utilisateur, je veux me connecter et me déconnecter, afin de contrôler mes sessions.
 
 **Critères d’acceptation**
-- [ ] Chaque séance est sauvegardée avec date, exercices, séries, reps, poids.
-- [ ] Historique disponible et filtrable.
-- [ ] Graphique de progression visible dans l’onglet “Progression”.
-
-**Notes techniques**
-- Table `sessions`: `id`, `workout_id`, `user_id`, `date`, `stats`.
-- Front : Graphiques via **victory-native**.
-- Back : API NestJS + Prisma.
-
-**Mockups à prévoir**
-- Historique de séances.
-- Graphique de progression.
+- [ ] Connexion avec email + mot de passe + MFA.
+- [ ] Déconnexion supprime les tokens.
+- [ ] Les tokens expirés forcent une reconnexion.
 
 ---
 
-## SHOULD HAVE
-
-### 4. Notifications et rappels
-**User Story**
-En tant qu’utilisateur, je veux recevoir des notifications en cas d’inactivité ou à la fin de mes repos, afin de rester discipliné.
+#### US-ACCT-04 — Réinitialisation mot de passe
+En tant qu’utilisateur, je veux réinitialiser mon mot de passe, afin de retrouver l’accès à mon compte en cas d’oubli.
 
 **Critères d’acceptation**
-- [ ] Notification si l’app n’est pas ouverte depuis X jours.
-- [ ] Notification en fin de temps de repos.
+- [ ] Demande d’un email de réinitialisation via **SendGrid/Resend**.
+- [ ] Lien à usage unique et expirant.
+- [ ] Nouveau mot de passe stocké via **Argon2**.
+
+---
+
+#### US-ACCT-05 — Suppression du compte
+En tant qu’utilisateur, je veux supprimer mon compte, afin d’exercer mon droit RGPD.
+
+**Critères d’acceptation**
+- [ ] Double confirmation avant suppression.
+- [ ] Données et fichiers liés effacés de **PostgreSQL** et **S3**.
+- [ ] Invalidation immédiate des tokens.
+
+---
+
+#### US-ACCT-06 — Gestion avatar
+En tant qu’utilisateur, je veux ajouter ou modifier mon avatar, afin de personnaliser mon profil.
+
+**Critères d’acceptation**
+- [ ] Upload image → stockage sécurisé **AWS S3**.
+- [ ] Liens signés pour l’accès aux images.
+- [ ] Option de suppression/restauration avatar par défaut.
+
+---
+
+### 🏋️ Gestion des entraînements et du planning
+
+#### US-PLAN-01 — Créer un entraînement
+En tant qu’utilisateur, je veux créer une séance avec des exercices, afin de planifier mon entraînement.
+
+**Critères d’acceptation**
+- [ ] Chaque exercice contient : nom, répétitions, séries, temps de repos, méthode.
+- [ ] L’utilisateur peut sauvegarder la séance.
+- [ ] Modification/suppression possibles.
+
+---
+
+#### US-PLAN-02 — Parcourir le catalogue d’exercices
+En tant qu’utilisateur, je veux parcourir un catalogue d’exercices par groupe musculaire, afin de trouver facilement mes mouvements.
+
+**Critères d’acceptation**
+- [ ] Exercices classés par groupe musculaire.
+- [ ] Filtres disponibles (muscle, matériel, niveau).
+
+---
+
+#### US-PLAN-03 — Créer un planning
+En tant qu’utilisateur, je veux créer un planning d’entraînement, afin d’organiser mes séances sur la durée.
+
+**Critères d’acceptation**
+- [ ] Définir un nom et une durée.
+- [ ] Associer des séances à des jours spécifiques.
+- [ ] Modifier ou supprimer un planning.
+
+---
+
+#### US-PLAN-04 — Suivre l’exécution du planning
+En tant qu’utilisateur, je veux marquer mes séances planifiées comme “faites”, afin de suivre mon avancement.
+
+**Critères d’acceptation**
+- [ ] Une séance planifiée peut être cochée comme “terminée”.
+- [ ] Elle est ensuite envoyée dans l’historique.
+
+---
+
+### 📊 Suivi des performances
+
+#### US-STATS-01 — Historique des séances
+En tant qu’utilisateur, je veux consulter mon historique, afin de garder la trace de mes entraînements.
+
+**Critères d’acceptation**
+- [ ] Chaque séance sauvegardée contient : date, exercices, séries, reps, poids.
+- [ ] Historique consultable et filtrable.
+
+---
+
+#### US-STATS-02 — Statistiques de progression
+En tant qu’utilisateur, je veux voir des graphiques, afin de mesurer ma progression.
+
+**Critères d’acceptation**
+- [ ] Graphique montrant volume total, régularité et fréquence.
+- [ ] Accessible uniquement après authentification.
+
+**Notes techniques**
+- Graphiques via **victory-native** (React Native).
+
+---
+
+### 🔔 Notifications (SHOULD HAVE)
+
+#### US-NOTIF-01 — Notification d’inactivité
+En tant qu’utilisateur, je veux recevoir une notification si je n’ai pas ouvert l’app depuis X jours, afin de rester motivé.
+
+**Critères d’acceptation**
+- [ ] Envoi via **Expo Notifications** (APNS/FCM).
 - [ ] Paramètres pour activer/désactiver.
 
-**Notes techniques**
-- Notifications push via **Expo Notifications (APNS/FCM)**.
-- Rappel repos via notifications locales.
+---
 
-**Mockups à prévoir**
-- Paramètres notifications (on/off).
+#### US-NOTIF-02 — Rappel fin de repos
+En tant qu’utilisateur, je veux recevoir un rappel quand mon temps de repos est terminé, afin de reprendre ma séance.
+
+**Critères d’acceptation**
+- [ ] Notification locale déclenchée à la fin du timer de repos.
 
 ---
 
-## COULD HAVE
+### 🏅 Gamification (COULD HAVE)
 
-### 5. Gamification et récompenses
-**User Story**
-En tant qu’utilisateur, je veux obtenir des badges et récompenses selon ma régularité, afin de rester motivé.
+#### US-GAME-01 — Badges d’assiduité
+En tant qu’utilisateur, je veux obtenir un badge si je m’entraîne régulièrement, afin de rester motivé.
 
 **Critères d’acceptation**
 - [ ] Badge “Assiduité” après X jours consécutifs.
-- [ ] Badge “Spécialisation” après X séances d’un même muscle.
+- [ ] Badge “Spécialisation” après X séances sur un même muscle.
 - [ ] Badges visibles dans le profil.
-
-**Notes techniques**
-- Table `achievements`: `id`, `user_id`, `badge_type`, `date_awarded`.
-- Attribution automatique via **BullMQ** (jobs async).
-
-**Mockups à prévoir**
-- Profil utilisateur avec badges.
 
 ---
 
-## WON’T HAVE (MVP)
+### 🌐 Module social (WON’T HAVE pour MVP)
 
-### 6. Module social
-**User Story**
-En tant qu’utilisateur, je veux partager mes séances et interagir avec d’autres sportifs, afin de me motiver.
+#### US-SOCIAL-01 — Partage et interactions
+En tant qu’utilisateur, je veux partager mes séances et interagir avec d’autres, afin de me motiver.
 
 **Critères d’acceptation**
-- [ ] Disponible uniquement après inscription.
-- [ ] Commenter, liker et partager des posts.
-- [ ] Personnaliser son profil (bio, photo, suivre).
+- [ ] Accessible uniquement après inscription.
+- [ ] Possibilité de commenter, liker, partager.
+- [ ] Profil personnalisable (bio, photo, follow).
 
-**Notes techniques**
-- API REST + WebSocket possible.
-- Risques RGPD + modération.
+---
 
-**Mockups à prévoir**
-- Fil social.
-- Profil utilisateur.
+## ⚙️ Notes techniques générales (issues du cadrage)
+
+- **Front-end** : React Native + Expo (TypeScript), NativeWind (styling), React Navigation.
+- **Back-end** : NestJS (Node.js + TypeScript), Prisma ORM.
+- **Base de données** : PostgreSQL (RLS, chiffrement natif, ACID).
+- **Cybersécurité** : Argon2, MFA TOTP/Passkeys, JWT + Refresh, Field Level Encryption, Helmet, CORS, rate limiting, conformité **OWASP MASVS/ASVS**.
+- **Services externes** :
+  - **Expo Notifications** → push.
+  - **SendGrid/Resend** → emails (validation, reset).
+  - **AWS S3** → stockage images avec liens signés.
+  - **Sentry** → suivi crashs mobile + API.
+- **Tests** : Jest, React Native Testing Library, Supertest.
+
+---
