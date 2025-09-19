@@ -1,0 +1,32 @@
+version: "3.9"
+services:
+  postgres:
+    image: postgres:16
+    container_name: lockfit-postgres
+    environment:
+      POSTGRES_USER: lockfit
+      POSTGRES_PASSWORD: lockfit
+      POSTGRES_DB: lockfit
+    ports:
+      - "5432:5432"
+    volumes:
+      - lockfit_pg_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U lockfit -d lockfit"]
+      interval: 5s
+      timeout: 5s
+      retries: 20
+
+  pgadmin:
+    image: dpage/pgadmin4:8
+    container_name: lockfit-pgadmin
+    environment:
+      PGADMIN_DEFAULT_EMAIL: admin@lockfit.local
+      PGADMIN_DEFAULT_PASSWORD: admin
+    ports:
+      - "5050:80"
+    depends_on:
+      - postgres
+
+volumes:
+  lockfit_pg_data:
