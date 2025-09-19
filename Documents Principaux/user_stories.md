@@ -10,7 +10,7 @@
 En tant qu’utilisateur, je veux créer une séance avec des exercices, afin de planifier mon entraînement.
 
 **Critères d’acceptation**
-- [ ] Chaque exercice contient : nom, répétitions, séries, temps de repos, méthode.
+- [ ] Chaque exercice contient : nom, répétitions, séries, temps de repos.
 - [ ] L’utilisateur peut sauvegarder la séance.
 - [ ] Modification/suppression possibles.
 
