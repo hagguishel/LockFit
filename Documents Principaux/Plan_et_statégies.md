@@ -12,7 +12,8 @@ pour une meilleure compréhension de l'avancée du projet.
 - **Pull Requests** : obligatoires, avec revue de code. Chaque push se fera avec une review
 complète de la part de l'autre développeur.
 - **Branches protégées** : pas de push direct sur `main` et `develop`. Des branches 'Tom' et 'Haggui'
-seront mis en place pour travailler chacun de notre côté.
+seront mis en place pour travailler chacun de notre côté. Une branche develop sera aussi crée pour fusionner
+les codes avant d'envoyer sur le main
 
 ---
 
