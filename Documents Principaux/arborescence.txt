@@ -1,0 +1,76 @@
+.
+├── arborescence.txt
+├── check-lockfit.sh
+├── docker-compose.yml
+├── install.deps.sh
+├── lockfit-api
+│   ├── package-lock.json
+│   ├── package.json
+│   ├── prisma
+│   │   ├── migrations
+│   │   │   ├── 20250919122812_init
+│   │   │   │   └── migration.sql
+│   │   │   └── migration_lock.toml
+│   │   └── schema.prisma
+│   ├── src
+│   │   ├── application.module.ts
+│   │   ├── authentification
+│   │   │   ├── authentification.controleur.ts
+│   │   │   ├── authentification.module.ts
+│   │   │   ├── authentification.service.ts
+│   │   │   └── dto
+│   │   ├── commun
+│   │   ├── entrainements
+│   │   │   ├── dto
+│   │   │   ├── entites
+│   │   │   ├── entrainements.controleur.ts
+│   │   │   ├── entrainements.module.ts
+│   │   │   └── entrainements.service.ts
+│   │   ├── principal.ts
+│   │   ├── prisma
+│   │   │   ├── prisma.module.ts
+│   │   │   └── prisma.service.ts
+│   │   ├── utilisateurs
+│   │   │   ├── dto
+│   │   │   ├── utilisateurs.controleur.ts
+│   │   │   ├── utilisateurs.module.ts
+│   │   │   └── utilisateurs.service.ts
+│   │   └── workouts
+│   │       ├── workouts.controller.spec.ts
+│   │       ├── workouts.controller.ts
+│   │       ├── workouts.module.ts
+│   │       ├── workouts.service.spec.ts
+│   │       └── workouts.service.ts
+│   ├── tests
+│   │   └── entrainements.e2e-spec.ts
+│   └── tsconfig.json
+└── lockfit-app
+    ├── App.tsx
+    ├── app.json
+    ├── assets
+    │   ├── adaptive-icon.png
+    │   ├── favicon.png
+    │   ├── icon.png
+    │   └── splash-icon.png
+    ├── index.ts
+    ├── package-lock.json
+    ├── package.json
+    ├── ressources
+    ├── src
+    │   ├── api
+    │   │   └── entrainements.ts
+    │   ├── composants
+    │   │   └── CarteEntrainement.tsx
+    │   ├── ecrans
+    │   │   ├── DetailsEntrainement.tsx
+    │   │   ├── FormulaireEntrainement.tsx
+    │   │   └── ListeEntrainements.tsx
+    │   ├── hooks
+    │   ├── navigation
+    │   │   └── NavigateurApp.tsx
+    │   ├── services
+    │   ├── types
+    │   └── utilitaires
+    └── tsconfig.json
+
+30 directories, 44 files
