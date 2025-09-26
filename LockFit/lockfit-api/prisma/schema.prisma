@@ -1,3 +1,6 @@
+//Fichier qui se connecte a la db, et transforme les modèles en tables. Prisma s'en sert pour créer les tables ou les modifier.
+//Fichier a modifier lorsqu'il y'aura plusieurs utilisateurs, donc une filtration, et un système de "ownership" par utilisateurs.
+
 generator client {
   provider = "prisma-client-js"
 }
@@ -8,9 +11,10 @@ datasource db {
 }
 
 model Workout {
-  id        String   @id @default(cuid())
-  title     String
-  note      String?
-  createdAt DateTime @default(now())
-  updatedAt DateTime @updatedAt
+  id         String   @id @default(cuid())
+  title      String
+  finishedAt DateTime?
+  note       String?
+  createdAt  DateTime @default(now())
+  updatedAt  DateTime @updatedAt
 }
