@@ -11,10 +11,11 @@ datasource db {
 }
 
 model Workout {
-  id         String   @id @default(cuid())
+  id         String    @id @default(cuid()) // ID auto (évite d'avoir à l'envoyer)
   title      String
-  finishedAt DateTime?
   note       String?
-  createdAt  DateTime @default(now())
-  updatedAt  DateTime @updatedAt
+  finishedAt DateTime?
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt // auto-mis à jour par Prisma
 }

@@ -18,10 +18,14 @@ async function bootstrap() { //Fonction asynchrone de démarrage
 		],
 		credentials: true,
 		methods: 'GET,HEAD,PUT,PATCH,POST,DELETE,OPTIONS', //méthodes autorisées
-		allowedHeaders: 'Content-type, authorization, x-user-id',
+		allowedHeaders: 'Content-Type, Authorization, X-User-Id',
 	});
 
-	app.useGlobalPipes(new ValidationPipe({ whitelist: true, transform: true }));
+	app.useGlobalPipes(new ValidationPipe({
+		whitelist: true,
+		transform: true,
+		forbidNonWhitelisted: true,
+	 }));
 	app.setGlobalPrefix('api/v1'); // Toutes les routes commencent par /api/v1
 
 	await app.listen(3000);

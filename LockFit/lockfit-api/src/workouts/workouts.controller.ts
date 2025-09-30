@@ -1,9 +1,8 @@
 // Fichier qui reçoit les appels HTTP, vérifie la forme via DTO, puis délègue au service (DB)
-import { Controller, Get, Post, Body, Param, Patch, Delete } from '@nestjs/common';   // Décorateurs Nest pour routes & corps de requête
+import { Controller, Get, Post, Body, Param, Patch, Delete, Query } from '@nestjs/common';   // Décorateurs Nest pour routes & corps de requête
 import { CreateWorkoutDto } from './dto/create-workout.dto';    // Contrat d'entrée pour créer un workout
 import { WorkoutsService } from './workouts.service';           // Service qui parlera à la base
 import { UpdateWorkoutDto } from './dto/update-workout.dto';
-
 @Controller('workouts')                                         // Toutes les routes ici commencent par /workouts
 export class WorkoutsController {                                // Contrôleur = “standardiste” HTTP
   constructor(private readonly service: WorkoutsService) {}      // Injection du service (logique & DB)
@@ -13,9 +12,9 @@ export class WorkoutsController {                                // Contrôleur 
     return this.service.create(dto);                             // Délègue la création au service
   }
 
-  @Get()                                                         // GET /api/v1/workouts
-  findAll() {
-    return this.service.findAll();                               // Délègue la lecture au service
+  @Get()                                                                 // GET /api/v1/workouts
+  findAll(@Query('from') from?: string, @Query('to') to?: string) {     // Passe les éventuels filtres de date au service
+    return this.service.findAll({ from, to });                         // Délègue la lecture au service et renvoie { items, total }
   }
 
   //GET /api/v1/workouts/:id - détail d'une séance, @Param ('id') lit le segment url
