@@ -1,5 +1,5 @@
 // Fichier qui reçoit les appels HTTP, vérifie la forme via DTO, puis délègue au service (DB)
-import { Controller, Get, Post, Body, Param, Patch, Delete, Query } from '@nestjs/common';   // Décorateurs Nest pour routes & corps de requête
+import { Controller, Get, Post, Body, Param, Patch, Delete, Query, HttpCode, HttpStatus } from '@nestjs/common';   // Décorateurs Nest pour routes & corps de requête
 import { CreateWorkoutDto } from './dto/create-workout.dto';    // Contrat d'entrée pour créer un workout
 import { WorkoutsService } from './workouts.service';           // Service qui parlera à la base
 import { UpdateWorkoutDto } from './dto/update-workout.dto';
@@ -34,6 +34,7 @@ export class WorkoutsController {                                // Contrôleur 
   }
   // POST /api/v1/workouts/:id/finish — marque comme terminée (finishedAt = maintenant)
   @Post(':id/finish')
+  @HttpCode(HttpStatus.OK)
   finish(@Param('id') id: string) {
     return this.service.finish(id);
   }
