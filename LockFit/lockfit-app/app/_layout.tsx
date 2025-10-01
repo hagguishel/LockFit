@@ -1,4 +1,4 @@
-//Fichier qui montre l'apparence globale de l'application. Après le lancement de App.tsx, c'est lui qui prend le relais.
+//Fichier qui montre l'apparence globale de l'application. Après le lancement du router, c'est lui qui prend le relais.
 
 import { Stack } from "expo-router";
 import { SafeAreaProvider } from "react-native-safe-area-context";
