@@ -1,0 +1,54 @@
+//Fichier qui se connecte a la db, et transforme les modèles en tables. Prisma s'en sert pour créer les tables ou les modifier.
+//Fichier a modifier lorsqu'il y'aura plusieurs utilisateurs, donc une filtration, et un système de "ownership" par utilisateurs.
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+model Workout {
+  id         String    @id @default(cuid()) // ID auto (évite d'avoir à l'envoyer)
+  title      String
+  note       String?
+  finishedAt DateTime?
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt // auto-mis à jour par Prisma
+
+  // back-relation vers PlanningJour
+  PlanningJour PlanningJour[]
+}
+
+model Planning {
+  id    String         @id @default(cuid())
+  nom   String
+  debut DateTime
+  fin   DateTime
+  //  relation
+  jours PlanningJour[]
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+}
+
+model PlanningJour {
+  id   String   @id @default(cuid())
+  date DateTime
+  note String?
+
+  // relations
+  planning   Planning @relation(fields: [planningId], references: [id], onDelete: Cascade)
+  planningId String
+
+  workout   Workout @relation(fields: [workoutId], references: [id], onDelete: Restrict)
+  workoutId String
+
+  // empecher le meme Workout 2x le meme jour dans un meme planning
+  @@unique([planningId, date, workoutId])
+  // index pour requetes rapides par jour
+  @@index([planningId, date])
+}
