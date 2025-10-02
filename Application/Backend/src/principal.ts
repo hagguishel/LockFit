@@ -17,6 +17,8 @@ async function bootstrap() { //Fonction asynchrone de démarrage
 		origin: [
 			'http://localhost:19006', // URL de l'expo web (navigateur pour tester les api)
 			'http://localhost:3000', // URL du client web qui appelle l'API de l'application (seulement avec le front)
+			'http://localhost:8081',  // Expo Web (Metro)
+
 		],
 		credentials: true,
 		methods: 'GET,HEAD,PUT,PATCH,POST,DELETE,OPTIONS', //méthodes autorisées
