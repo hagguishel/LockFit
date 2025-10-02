@@ -3,7 +3,7 @@ import { Controller, Get, Post, Body, Param, Patch, Delete, Query, HttpCode, Htt
 import { CreateWorkoutDto } from './dto/create-workout.dto';    // Contrat d'entrée pour créer un workout
 import { WorkoutsService } from './workouts.service';           // Service qui parlera à la base
 import { UpdateWorkoutDto } from './dto/update-workout.dto';
-@Controller('workouts')                                         // Toutes les routes ici commencent par /workouts
+@Controller(['workouts', 'entrainements'])                        // Toutes les routes ici commencent par /workouts
 export class WorkoutsController {                                // Contrôleur = “standardiste” HTTP
   constructor(private readonly service: WorkoutsService) {}      // Injection du service (logique & DB)
 
