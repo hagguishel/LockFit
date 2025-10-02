@@ -1,8 +1,14 @@
-// application/Frontend/tsconfig.json
 {
   "extends": "expo/tsconfig.base",
   "compilerOptions": {
-    "skipLibCheck": true
+    "strict": true,
+    "skipLibCheck": true,
+    "types": ["expo-router"],
+    "lib": ["ESNext", "DOM"],
+    "jsx": "react-jsx",
+    "moduleResolution": "bundler",
+    "noEmit": true
   },
+  "include": ["**/*.ts", "**/*.tsx", "app", "src"],
   "exclude": ["node_modules", "dist", "build"]
 }
