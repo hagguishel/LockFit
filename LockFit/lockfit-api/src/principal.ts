@@ -5,6 +5,8 @@ import { NestFactory } from '@nestjs/core';
 import { ValidationPipe } from '@nestjs/common';
 import helmet from 'helmet'; //Sécurité HTTP, helmet active une série de protections automatiques
 import { AppModule } from './application.module';
+import 'dotenv/config'     // <-- charge .env dans process.env au runtime
+import 'reflect-metadata'
 
 async function bootstrap() { //Fonction asynchrone de démarrage
 	const app = await NestFactory.create(AppModule); // Création de l'instance Nest a partir du fichier application.module

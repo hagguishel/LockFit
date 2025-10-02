@@ -8,13 +8,14 @@ import { WorkoutsModule } from './workouts/workouts.module';
 import { PrismaModule } from './prisma/prisma.module'; // Module qui fournit PrismaService, un seul client partagé
 import { HealthController } from './commun/health.controller'; // Utilisé pour tester l'API
 import { APP_GUARD } from '@nestjs/core';
+import { PlanningsModule } from './plannings/plannings.module';
 
 @Module({
   imports: [
     ConfigModule.forRoot({ isGlobal: true }), //Charge le fichier .env, et le rend global pour l'utiliser partout
     ThrottlerModule.forRoot([{ ttl: 60_000, limit: 60 }]), //limite le nombre de requêtes a 60
     PrismaModule, // expose Prisma pour que l'app puisse l'utiliser partout
-    WorkoutsModule, // Ajoute les routes dans l'app
+    WorkoutsModule, PlanningsModule, // Ajoute les routes dans l'app
   ],
   controllers: [HealthController],
   providers: [
