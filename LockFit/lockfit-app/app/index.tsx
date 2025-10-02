@@ -1,17 +1,22 @@
 // Écran d'accueil (premier écran du router)
 import { StatusBar } from "expo-status-bar";
-import { Text, View, StyleSheet } from "react-native";
+import { Text, View, StyleSheet, Pressable } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
+import { Link } from "expo-router";
 
 export default function HomeScreen() { //export la fonction HomeScreen comme premier écran du router
   return (
     <SafeAreaView style={styles.container} edges={["top", "bottom"]}>
       <StatusBar style="light" />
       <Text style={styles.title}>LockFit</Text>
-      <Text style={styles.subtitle}>Front mobile</Text>
-      <View style={styles.card}>
-        <Text style={styles.cardText}>Test!</Text>
-      </View>
+      <Text style={styles.subtitle}>Ta clé pour la performance</Text>
+      
+      {/* Bouton → /workouts (ouvre app/workouts/index.tsx) */}
+      <Link href="/workouts" asChild>
+        <Pressable style={styles.cta}>
+          <Text style={styles.ctaText}>→ Voir mes entraînements</Text>
+        </Pressable>
+      </Link>
     </SafeAreaView>
   );
 }
@@ -26,24 +31,23 @@ const styles = StyleSheet.create({
   title: {
     fontSize: 28,
     fontWeight: "700",
-    color: "#E6F0FF",
-    marginBottom: 8,
+    color: "#12E29A",
+    marginBottom: 6,
     textAlign: "center",
   },
   subtitle: {
-    fontSize: 14,
+    fontSize: 17,
     color: "#98A2B3",
     marginBottom: 16,
     textAlign: "center",
-  },
-  card: {
-    borderWidth: 1,
-    borderColor: "#232A3A",
-    backgroundColor: "#121927",
-    borderRadius: 16,
-    padding: 16,
-    alignSelf: "center",
-    minWidth: "70%",
+  
   },
   cardText: { color: "#E6F0FF", textAlign: "center" },
+
+  // Bouton vers /workouts
+  cta: {
+    backgroundColor: "#12E29A", paddingVertical: 12, paddingHorizontal: 16,
+    borderRadius: 12, alignSelf: "center",
+  },
+  ctaText: { color: "#061018", fontWeight: "700" },
 });
