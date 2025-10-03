@@ -1,8 +1,9 @@
 // le fichier sert à valider les dates en JS et on insère via Prisma dans la table Planning
-import { Injectable, BadRequestException, InternalServerErrorException, no } from '@nestjs/common';
+import { Injectable, BadRequestException, InternalServerErrorException, NotFoundException } from '@nestjs/common';
 import { PrismaService } from '../prisma/prisma.service';
 import { CreerPlanningDto } from './dto/creer-planning.dto';
 import { ListPlanningsQuery } from './dto/list-plannings.query';
+
 
 /**
  * Service = logique métier : conversions, règles, appels DB (Prisma)
@@ -88,6 +89,29 @@ export class PlanningsService {
     } catch (e) {
       console.error('[PlanningsService.list] Prisma error:', e);
       throw new InternalServerErrorException('Erreur lors de la récupération des plannings');
+    }
+  }
+  /**
+   * Détail d'un planning par ID.
+   * - Renvoie 404 si l'ID n'existe pas.
+   * - (Évolution future : inclure les jours / workouts liés)
+   */
+  async findOne(id: string) {
+    try {
+      const planning = await this.prisma.planning.findUnique({
+        where: { id },
+      });
+      if (!planning) {
+        throw new NotFoundException('Planning non trouvé');
+      }
+      return planning;
+    } catch (e) {
+      // NotFoundException déjà gérée, on logue le reste
+      if (!(e instanceof NotFoundException)) {
+        console.error('[PlanningService.findOne] Prisma error:', e);
+        throw new InternalServerErrorException('Erreur lors de la récupération du planning');
+      }
+      throw e;
     }
   }
 }

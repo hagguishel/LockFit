@@ -1,4 +1,4 @@
-import { Controller,Body, Post, Get, Query } from '@nestjs/common';
+import { Controller,Body, Post, Get, Query, Param } from '@nestjs/common';
 import { PlanningsService } from './plannings.service';
 import { CreerPlanningDto } from './dto/creer-planning.dto';
 import { ListPlanningsQuery } from './dto/list-plannings.query';
@@ -32,4 +32,13 @@ export class PlanningsController {
 	list(@Query() q: ListPlanningsQuery) {
 		return this.service.list(q);
 	}
+   /**
+   * GET /api/v1/plannings/:id
+   * - Retourne le planning demandé
+   * - 404 si introuvable
+   */
+  @Get(':id')
+  findOne(@Param('id') id : string) {
+    return this.service.findOne(id);
+  }
 }
