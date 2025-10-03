@@ -1,8 +1,10 @@
 // le fichier sert à valider les dates en JS et on insère via Prisma dans la table Planning
-import { Injectable, BadRequestException, InternalServerErrorException, NotFoundException } from '@nestjs/common';
+import { Injectable, BadRequestException, InternalServerErrorException, NotFoundException, ConflictException } from '@nestjs/common';
 import { PrismaService } from '../prisma/prisma.service';
 import { CreerPlanningDto } from './dto/creer-planning.dto';
 import { ListPlanningsQuery } from './dto/list-plannings.query';
+import { AjouterJourDto } from './dto/ajouter-jour.dto';
+import { decrypt } from 'dotenv';
 
 
 /**
@@ -92,26 +94,76 @@ export class PlanningsService {
     }
   }
   /**
-   * Détail d'un planning par ID.
-   * - Renvoie 404 si l'ID n'existe pas.
-   * - (Évolution future : inclure les jours / workouts liés)
-   */
+ * Détail d'un planning par ID (inclut ses jours + workout de chaque jour).
+ * - 404 si l'ID n'existe pas.
+ */
   async findOne(id: string) {
     try {
       const planning = await this.prisma.planning.findUnique({
         where: { id },
+        include: {
+          jours: {
+            orderBy: { date: 'asc' },
+            include: { workout: true },
+          },
+        },
       });
       if (!planning) {
         throw new NotFoundException('Planning non trouvé');
       }
       return planning;
     } catch (e) {
-      // NotFoundException déjà gérée, on logue le reste
       if (!(e instanceof NotFoundException)) {
         console.error('[PlanningService.findOne] Prisma error:', e);
         throw new InternalServerErrorException('Erreur lors de la récupération du planning');
       }
       throw e;
+    }
+  }
+
+  /**
+ * Ajoute un jour au planning.
+ */
+  async addJour(planningId: string, dto: AjouterJourDto) {
+    // 1) le Planning dois exister
+    const planning = await this.prisma.planning.findUnique({ where: { id: planningId } });
+    if (!planning) throw new NotFoundException('Planning non trouvé');
+
+    // 2) Parse date
+    const date = new Date(dto.date);
+    if (isNaN(date.getTime())) {
+      throw new BadRequestException('Date invalide (format ISO Requis)');
+    }
+    // 3) Date [debut...fin]
+    if (date < planning.debut || date > planning.fin) {
+      throw new BadRequestException('La date dois etre dans la periode du planning');
+    }
+    // 4) Workout dois exister
+    const workout = await this.prisma.workout.findUnique({ where: { id: dto.workoutId } });
+    if (!workout) throw new NotFoundException('workout inexistant');
+
+    // 5) insert
+    try {
+      return await this.prisma.planningJour.create({
+        data: {
+          date,
+          note: dto.note ?? null,
+          planningId,
+          workoutId: dto.workoutId,
+        },
+        include: { workout:true },
+      });
+    } catch (e: any) {
+      if (e?.code === 'P2002') {
+        //unique constraint (planning, date, workoutId)
+        throw new ConflictException('Ce workout est deja planifié ce jour dans ce planning');
+      }
+      if (e?.code === 'P2003') {
+        // foreign key
+        throw new BadRequestException('Clé étrangère invalide (planningId ou workoutId)');
+      }
+      console.error('[PlanningService.addJour] Prisma error:', e);
+      throw new InternalServerErrorException("Erruer lors de l'ajout du jour");
     }
   }
 }

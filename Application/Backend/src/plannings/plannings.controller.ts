@@ -2,6 +2,8 @@ import { Controller,Body, Post, Get, Query, Param } from '@nestjs/common';
 import { PlanningsService } from './plannings.service';
 import { CreerPlanningDto } from './dto/creer-planning.dto';
 import { ListPlanningsQuery } from './dto/list-plannings.query';
+import { AjouterJourDto } from './dto/ajouter-jour.dto';
+import { Sign } from 'crypto';
 /**
  * Contrôleur Plannings
  * - Expose les routes HTTP et délègue au service.
@@ -20,6 +22,14 @@ export class PlanningsController {
 		return this.service.create(dto);
 	}
 
+  /**
+ * POST /api/v1/plannings/:id/jours
+ * - Ajoute un jour au planning (date ISO, workoutId, note?)
+ */
+  @Post(':id/jours')
+  addJour(@Param('id') planningId: string, @Body() dto: AjouterJourDto) {
+    return this.service.addJour(planningId, dto);
+  }
 	/**
    	* GET /api/v1/plannings
    	* Paramètres:
@@ -41,4 +51,5 @@ export class PlanningsController {
   findOne(@Param('id') id : string) {
     return this.service.findOne(id);
   }
+
 }
