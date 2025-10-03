@@ -1,6 +1,10 @@
 {
   "dependencies": {
-    "expo": "^54.0.12"
+    "expo": "^54.0.12",
+    "expo-router": "~6.0.10",
+    "react": "19.1.0",
+    "react-dom": "19.1.0",
+    "react-native": "0.81.4"
   },
   "devDependencies": {
     "@types/node": "^24.6.2",
