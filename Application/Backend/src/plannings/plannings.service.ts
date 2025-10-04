@@ -5,7 +5,8 @@ import { CreerPlanningDto } from './dto/creer-planning.dto';
 import { ListPlanningsQuery } from './dto/list-plannings.query';
 import { AjouterJourDto } from './dto/ajouter-jour.dto';
 import { decrypt } from 'dotenv';
-
+import { UpdatePlanningJourDto } from './dto/update-planning-jour.dto';
+import { FinishPlanningJourDto } from './dto/finish-planning-jour.dto';
 
 /**
  * Service = logique métier : conversions, règles, appels DB (Prisma)
@@ -16,6 +17,18 @@ import { decrypt } from 'dotenv';
 @Injectable()
 export class PlanningsService {
   constructor(private readonly prisma: PrismaService) {}
+
+  private toDateOnly(value: string): Date {
+    // Force le "jour" à minuit UTC pour éviter les suprises de fuseau
+    const d = new Date(value + 'T00:00:00.000Z');
+    if (isNaN(d.getTime())) throw new BadRequestException('date invalide (ISO attendu)');
+    return d;
+  }
+
+  private withinRange(d: Date, start: Date, end: Date) {
+    const t = d.getTime();
+    return t >= start.getTime() && t <= end.getTime();
+  }
 
   /**
    * Création d'un planning : applique les règles puis écrit en DB.
@@ -164,6 +177,102 @@ export class PlanningsService {
       }
       console.error('[PlanningService.addJour] Prisma error:', e);
       throw new InternalServerErrorException("Erruer lors de l'ajout du jour");
+    }
+  }
+  async updateJour(planningId: string, jourId: string, dto: UpdatePlanningJourDto) {
+    // 1) Charger le jour + planning
+    const jour = await this.prisma.planningJour.findUnique({
+      where: { id: jourId },
+      include: { planning: true },
+    });
+    if (!jour || jour.planningId !== planningId) {
+      throw new NotFoundException('Jour introuvable pour ce planning');
+    }
+
+    const data: any = {};
+    let newDate = jour.date;
+    let newWorkoutId = jour.workoutId;
+
+    // 2) Si date fournie -> normaliser et verifier plage [debut..fin]
+    if (dto.date) {
+      newDate = this.toDateOnly(dto.date);
+      if (!this.withinRange(newDate, jour.planning.debut, jour.planning.fin)) {
+        throw new BadRequestException('La date est hors de la periode du planning');
+      }
+      data.date = newDate;
+    }
+
+    // 3) si WorkoudId fourni -> vérifier existence
+    if (dto.workoutId) {
+      const w = await this.prisma.workout.findUnique({ where: { id: dto.workoutId } });
+      if (!w) throw new BadRequestException('workoutId invalide');
+      newWorkoutId = dto.workoutId;
+      data.workout = dto.workoutId;
+    }
+    // 4) Si on modifie date ou workout -> vérifier collision unicité
+    if (dto.date || dto.workoutId) {
+      const conflict = await this.prisma.planningJour.findFirst({
+        where: {
+          planningId,
+          date: newDate,
+          workoutId: newWorkoutId,
+          NOT: { id: jourId },
+        },
+      });
+      if (conflict) {
+        throw new ConflictException('Ce workout est deja planifié ce e jour dans ce planning');
+      }
+    }
+
+    // 5) Update
+    try {
+      return await this.prisma.planningJour.update({
+        where: { id: jourId },
+        data,
+        include: { workout: true },
+      });
+    } catch (e: any) {
+      console.error('[PlanningService.updateJour] Prisma error:', e);
+      throw new InternalServerErrorException('Erreur lors de la mise à jour');
+    }
+  }
+  async deleteJour(planningId: string, jourId: string) {
+    const jour = await this.prisma.planningJour.findUnique({ where: { id: jourId } });
+    if (!jour || jour.planningId !== planningId) {
+      throw new NotFoundException('Jour introuvable pour ce planning');
+    }
+
+    try {
+      await this.prisma.planningJour.delete({ where: { id:jourId } });
+      return { ok: true };
+    } catch (e: any) {
+      console.error('[PlanningService.deleteJour] Prisma error:', e);
+      throw new InternalServerErrorException('Erreur lors de la suppression du jour');
+    }
+  }
+  async finishJour(planningId: string, jourId: string, dto: FinishPlanningJourDto) {
+    const jour = await this.prisma.planningJour.findUnique({ where: { id: jourId } });
+    if (!jour || jour.planningId !== planningId) {
+      throw new NotFoundException('Jour introuvable pour ce planning');
+    }
+
+    const finisheAt = dto.finishedAt ? new Date(dto.finishedAt) : new Date();
+    if (isNaN(finisheAt.getTime())) throw new BadRequestException('finisheAt invalide');
+
+    // Idempotent: si deja DONE, on renvoie l'objet tel quel
+    if ((jour as any).status == 'DONE') {
+      return jour;
+    }
+
+    try {
+      return await this.prisma.planningJour.update({
+        where: {id: jourId },
+        data: { status: 'DONE', doneAt: finisheAt },
+        include: { workout: true },
+      });
+    } catch (e: any) {
+      console.error('[PlanningsService.finishJour] Prisma error:', e);
+      throw new InternalServerErrorException("Erreur lors du marquage 'fait'");
     }
   }
 }
