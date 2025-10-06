@@ -37,6 +37,7 @@ export class PlanningsController {
   }
 
   @Post(':planningId/jours/:jourId/finish')
+  @HttpCode(HttpStatus.OK)
   finishJour(
     @Param('planningId') planningId: string,
     @Param('jourId') jourId: string,

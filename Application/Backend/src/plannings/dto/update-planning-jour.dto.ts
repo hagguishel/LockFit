@@ -1,4 +1,4 @@
-import { IsISO8601, IsOptional, IsString, IsUUID } from "class-validator";
+import { IsISO8601, IsOptional, IsString, IsNotEmpty, Length } from "class-validator";
 
 export class UpdatePlanningJourDto {
   @IsOptional()
@@ -7,6 +7,7 @@ export class UpdatePlanningJourDto {
 
   @IsOptional()
   @IsString()
-  @IsUUID()
+  @IsNotEmpty()
+  @Length(20, 40) // cadre large pout CUID
   workoutId?: string;
 }
