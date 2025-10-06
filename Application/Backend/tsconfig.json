@@ -10,7 +10,12 @@
     "emitDecoratorMetadata": true,
     "outDir": "dist",
     "sourceMap": true,
-    "types": ["node"]
+    "types": [
+      "node"
+    ]
   },
-  "include": ["src/**/*"]
+  "include": [
+    "src/**/*"
+  ],
+  "extends": "expo/tsconfig.base"
 }
