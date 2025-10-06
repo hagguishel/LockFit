@@ -1,6 +1,6 @@
 //Fichier client métier pour parler aux routes /workouts
 
-import { http } from "./api";
+import { http } from "../api/http";
 
 export type Workout = { //Basé sur le schema.prisma
     id: string;

@@ -5,7 +5,7 @@ import { useState } from "react"; // Hooks React pour gérer l'état (title, sav
 import { Alert, StyleSheet, Text, View, TextInput, Pressable } from "react-native"; // Composant de l'UI
 import { SafeAreaView } from "react-native-safe-area-context"; // Gère seul les zones "safe"
 import { Stack, useRouter } from "expo-router"; // Header + navigation
-import { createWorkout } from "../../lib/workouts";    // Client API: POST /workouts
+import { createWorkout } from "../../src/lib/workouts";    // Client API: POST /workouts
 
 export default function NewWorkoutScreen() {
   const router = useRouter();  //Hook navigation (Expo Router)
