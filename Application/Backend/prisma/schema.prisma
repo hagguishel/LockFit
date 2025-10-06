@@ -35,6 +35,11 @@ model Planning {
   updatedAt DateTime @updatedAt
 }
 
+enum PlanningJourStatus {
+  PLANNED
+  DONE
+}
+
 model PlanningJour {
   id   String   @id @default(cuid())
   date DateTime
@@ -46,6 +51,10 @@ model PlanningJour {
 
   workout   Workout @relation(fields: [workoutId], references: [id], onDelete: Restrict)
   workoutId String
+
+  // suivi d'execution
+  status PlanningJourStatus @default(PLANNED)
+  doneAt DateTime?
 
   // empecher le meme Workout 2x le meme jour dans un meme planning
   @@unique([planningId, date, workoutId])
