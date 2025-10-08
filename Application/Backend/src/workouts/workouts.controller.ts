@@ -8,7 +8,8 @@ export class WorkoutsController {                                // Contrôleur 
   constructor(private readonly service: WorkoutsService) {}      // Injection du service (logique & DB)
 
   @Post()                                                        // POST /api/v1/workouts
-  create(@Body() dto: CreateWorkoutDto) {                        // Lit & valide le JSON contre le DTO
+  create(@Body() dto: CreateWorkoutDto) {
+    console.log('test')                   // Lit & valide le JSON contre le DTO
     return this.service.create(dto);                             // Délègue la création au service
   }
 

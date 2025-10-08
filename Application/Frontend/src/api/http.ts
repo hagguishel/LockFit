@@ -4,28 +4,36 @@
 // 🌐 Configuration de base de l'API
 // =======================================================
 const RAW_BASE = process.env.EXPO_PUBLIC_API_URL ?? "";
-const BASE = RAW_BASE.replace(/\/+$/, ""); // on retire les / en fin d’URL
-if (!BASE) {
+export const API_BASE = RAW_BASE.trim().replace(/\/+$/, ""); // on retire les / en fin d’URL
+if (!API_BASE) {
+  // Sur téléphone réel, on DOIT fournir EXPO_PUBLIC_API_URL (tunnel HTTPS conseillé)
   throw new Error(
-    "EXPO_PUBLIC_API_URL manquant (ex: http://localhost:3000/api/v1)"
+    "EXPO_PUBLIC_API_URL manquant (ex: https://<ton-tunnel>.trycloudflare.com/api/v1)"
   );
+}
+
+// Petit helper pour assembler l’URL finale sans // doublons
+function buildUrl(path: string): string {
+  const p = path.startsWith("/") ? path : `/${path}`;
+  return `${API_BASE}${p}`.replace(/(?<!:)\/{2,}/g, "/"); // garde 'https://' intact
 }
 
 // =======================================================
 // ⚙️ Type d’options acceptées par la fonction http()
 // =======================================================
-type HttpOptions = {
+export type HttpOptions = {
   method?: "GET" | "POST" | "PATCH" | "DELETE";
   body?: any;
   signal?: AbortSignal | null;
   headers?: Record<string, string>;
-  timeoutMs?: number; // ⏱️ optionnel — pour annuler automatiquement une requête trop longue
+  timeoutMs?: number;      // ⏱️ annule auto si trop long (par défaut 20s)
+  token?: string | null;   // 🔐 JWT si besoin → Authorization: Bearer <token>
 };
 
 // =======================================================
 // ❗️Classe d’erreur personnalisée (conserve le code HTTP)
 // =======================================================
-class HttpError extends Error {
+export class HttpError extends Error {
   status: number;
   payload: any;
 
@@ -44,74 +52,85 @@ export async function http<T = unknown>(
   path: string,
   opts: HttpOptions = {}
 ): Promise<T | null> {
-  // 🧱 Construction de l’URL complète
-  const url = `${BASE}${path.startsWith("/") ? "" : "/"}${path}`;
+  const url = buildUrl(path);
 
-  // 🎛️ Extraction des options avec valeurs par défaut
   const {
     method = "GET",
     body,
     signal: externalSignal = null,
     headers: extraHeaders,
-    timeoutMs,
+    timeoutMs = 20000,
+    token = null,
   } = opts;
 
-  // 📨 Préparation de la requête
+  const headers: Record<string, string> = {
+    "Content-Type": "application/json",
+    Accept: "application/json",
+    ...(extraHeaders ?? {}),
+  };
+  if (token) headers["Authorization"] = `Bearer ${token}`;
+
   const init: RequestInit = {
-    method: method as RequestInit["method"],
-    headers: {
-      "Content-Type": "application/json",
-      "Accept": "application/json",
-      ...(extraHeaders ?? {}),
-    } as HeadersInit,
+    method,
+    headers,
   };
 
-  // 🚫 Ne pas envoyer de body pour un GET (incompatible avec certaines API)
+  // 🚫 Pas de body pour GET
   if (body !== undefined && body !== null && method !== "GET") {
     init.body = JSON.stringify(body);
   }
 
-  // ⏱️ Timeout et gestion du signal d’annulation
-  const controller = !externalSignal && timeoutMs ? new AbortController() : null;
-  const signal = externalSignal ?? controller?.signal ?? null;
-  if (signal) (init as RequestInit).signal = signal;
-  const timer =
-    controller && timeoutMs
-      ? setTimeout(() => controller.abort(), timeoutMs)
-      : null;
+  // ⏱️ Timeout + annulation
+  const controller = !externalSignal ? new AbortController() : null;
+  const combinedSignal = externalSignal ?? controller?.signal ?? null;
+  if (combinedSignal) init.signal = combinedSignal;
 
+  const timer = controller ? setTimeout(() => controller.abort(), timeoutMs) : null;
+
+  let res: Response;
   try {
-    // 📡 Envoi de la requête
-    const res = await fetch(url, init);
-
-    // 📦 Lecture conditionnelle du corps JSON
-    const contentType = res.headers.get("content-type") || "";
-    const isJson = contentType.includes("application/json");
-    const hasBody = res.status !== 204 && res.status !== 205;
-
-    let data: any = null;
-    if (hasBody && isJson) {
-      data = await res.json().catch(() => null);
-    }
-
-    // ❌ Gestion d’erreur enrichie
-    if (!res.ok) {
-      const msg =
-        (data && (data.message || data.error)) || `HTTP ${res.status}`;
-      const text = Array.isArray(msg) ? msg.join("\n") : String(msg);
-      throw new HttpError(res.status, text, data);
-    }
-
-    // ✅ Succès
-    return (data as T) ?? null;
+    // Debug utile (tu peux commenter si bruyant)
+    // console.log("HTTP:", method, url);
+    res = await fetch(url, init);
+  } catch (e: any) {
+    if (timer) clearTimeout(timer);
+    // Erreur réseau (API down, mauvaise URL, HTTP clair bloqué, DNS tunnel, etc.)
+    const hint = [
+      `Échec réseau vers ${url}`,
+      `Vérifie :`,
+      `• Le tunnel HTTPS est bien actif (cloudflared en cours d’exécution)`,
+      `• L’URL dans .env (EXPO_PUBLIC_API_URL) est exacte et finit par /api/v1`,
+      `• Android ≥ 9/iOS bloquent souvent le HTTP clair → utilise HTTPS`,
+    ].join("\n");
+    throw new Error(`${e?.message || String(e)}\n${hint}`);
   } finally {
-    // 🧹 Nettoyage du timer de timeout s’il existe
     if (timer) clearTimeout(timer);
   }
+
+  const contentType = res.headers.get("content-type") || "";
+  const isJson = contentType.includes("application/json");
+  const hasBody = res.status !== 204 && res.status !== 205;
+
+  let data: any = null;
+  if (hasBody && isJson) {
+    try {
+      data = await res.json();
+    } catch {
+      data = null;
+    }
+  }
+
+  if (!res.ok) {
+    const msg = (data && (data.message || data.error)) || `HTTP ${res.status}`;
+    const text = Array.isArray(msg) ? msg.join("\n") : String(msg);
+    throw new HttpError(res.status, text, data);
+  }
+
+  return (data as T) ?? null;
 }
 
 // =======================================================
-// 💡 Helpers pratiques pour simplifier les appels
+// 💡 Helpers pratiques
 // =======================================================
 export const httpGet = <T>(
   path: string,

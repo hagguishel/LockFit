@@ -1,41 +1,52 @@
-//Fichier qui éxecuté en premier qui démarre le serveur, active Helmet, CORS, validation et met le préfixe d'URL /api/v1
+// Fichier lancé en premier : démarre le serveur, Helmet, CORS, validation, préfixe /api/v1
 
-import 'reflect-metadata'
+import 'reflect-metadata';
+import 'dotenv/config';
 import { NestFactory } from '@nestjs/core';
 import { ValidationPipe } from '@nestjs/common';
-import helmet from 'helmet'; //Sécurité HTTP, helmet active une série de protections automatiques
+import helmet from 'helmet';
 import { AppModule } from './application.module';
-import 'dotenv/config'     // <-- charge .env dans process.env au runtime
-import 'reflect-metadata'
 
-async function bootstrap() { //Fonction asynchrone de démarrage
-	const app = await NestFactory.create(AppModule); // Création de l'instance Nest a partir du fichier application.module
+async function bootstrap() {
+  // 1) Crée l’app Nest (CORS off ici, on va l’activer juste après avec une config claire)
+  const app = await NestFactory.create(AppModule, { cors: false });
 
-	app.use(helmet());
+  // 2) Helmet (sécurité HTTP) — on désactive la politique d’images cross-origin en dev pour éviter des surprises
+  app.use(
+    helmet({
+      crossOriginResourcePolicy: { policy: 'cross-origin' },
+    })
+  );
 
-	app.enableCors({
-		origin: [
-			'http://localhost:19006', // URL de l'expo web (navigateur pour tester les api)
-			'http://localhost:3000', // URL du client web qui appelle l'API de l'application (seulement avec le front)
-			'http://localhost:8081',  // Expo Web (Metro)
+  // 3) CORS : en DEV on peut être permissif pour Expo Go (qui n’envoie pas toujours d’Origin)
+  //    origin: true => reflète l’origine de la requête si présente
+  app.enableCors({
+    origin: true,
+    methods: ['GET', 'POST', 'PATCH', 'DELETE', 'OPTIONS'],
+    allowedHeaders: ['Content-Type', 'Authorization'],
+    credentials: false,
+    maxAge: 86400,
+  });
 
-		],
-		credentials: true,
-		methods: 'GET,HEAD,PUT,PATCH,POST,DELETE,OPTIONS', //méthodes autorisées
-		allowedHeaders: 'Content-Type, Authorization, X-User-Id',
-	});
+  // 4) Validation globale : nettoie et transforme le payload, bloque les champs non attendus
+  app.useGlobalPipes(
+    new ValidationPipe({
+      whitelist: true,
+      transform: true,
+      forbidNonWhitelisted: true,
+    })
+  );
 
-	app.useGlobalPipes(new ValidationPipe({
-		whitelist: true,
-		transform: true,
-		forbidNonWhitelisted: true,
-	 }));
-	app.setGlobalPrefix('api/v1'); // Toutes les routes commencent par /api/v1
+  // 5) Toutes les routes commencent par /api/v1
+  app.setGlobalPrefix('api/v1');
 
-	await app.listen(3000);
-	console.log('🚀 LockFit API up on http://localhost:3000/api/v1');
+  // 6) Écoute sur 0.0.0.0 pour être accessible depuis le réseau local / téléphone
+  const port = Number(process.env.PORT || 3000);
+  await app.listen(port, '0.0.0.0');
+  console.log(`🚀 LockFit API up on http://0.0.0.0:${port}/api/v1`);
 }
+
 bootstrap().catch((err) => {
-	console.error('❌ Bootstrap error:', err);
-	process.exit(1);
+  console.error('❌ Bootstrap error:', err);
+  process.exit(1);
 });

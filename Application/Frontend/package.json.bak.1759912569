@@ -24,9 +24,7 @@
     "@tanstack/react-query": "^5.90.2",
     "@types/react": "~19.1.10",
     "axios": "^1.12.2",
-    "expo": "^54.0.12",
-    "expo-constants": "~18.0.9",
-    "expo-linking": "~8.0.8",
+    "expo": "^60.0.0",
     "expo-router": "~6.0.10",
     "expo-secure-store": "~15.0.7",
     "expo-status-bar": "~3.0.8",
@@ -45,5 +43,13 @@
     "@types/react": "~19.1.10",
     "expo-module-scripts": "^5.0.7",
     "typescript": "~5.9.2"
+  },
+  "overrides": {
+    "react": "19.1.0",
+    "react-dom": "19.1.0",
+    "expo-module-scripts/react": "19.1.0",
+    "expo-module-scripts/react-dom": "19.1.0",
+    "jest-expo/react": "19.1.0",
+    "jest-expo/react-dom": "19.1.0"
   }
 }
