@@ -1,8 +1,10 @@
 version: "3.9"
+
 services:
-  postgres:
+  db:
     image: postgres:16
     container_name: lockfit-postgres
+    restart: unless-stopped
     environment:
       POSTGRES_USER: lockfit
       POSTGRES_PASSWORD: lockfit
@@ -10,23 +12,46 @@ services:
     ports:
       - "5432:5432"
     volumes:
-      - lockfit_pg_data:/var/lib/postgresql/data
+      - db_data:/var/lib/postgresql/data
     healthcheck:
       test: ["CMD-SHELL", "pg_isready -U lockfit -d lockfit"]
       interval: 5s
-      timeout: 5s
-      retries: 20
+      timeout: 3s
+      retries: 10
 
-  pgadmin:
-    image: dpage/pgadmin4:8
-    container_name: lockfit-pgadmin
-    environment:
-      PGADMIN_DEFAULT_EMAIL: admin@lockfit.local
-      PGADMIN_DEFAULT_PASSWORD: admin
+  backend:
+    build:
+      context: ./Backend
+      dockerfile: Dockerfile
+    container_name: lockfit-api
+    restart: unless-stopped
+    env_file:
+      - ./Backend/.env.docker
     ports:
-      - "5050:80"
+      - "3000:3000"
     depends_on:
-      - postgres
+      db:
+        condition: service_healthy
+    # NB: on installe curl dans l'image runtime pour ce healthcheck
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:3000/api/v1/health"]
+      interval: 10s
+      timeout: 3s
+      retries: 10
+
+# Optionnel : PGAdmin (commenté)
+#  pgadmin:
+#    image: dpage/pgadmin4:8
+#    container_name: lockfit-pgadmin
+#    restart: unless-stopped
+#    environment:
+#      PGADMIN_DEFAULT_EMAIL: admin@local
+#      PGADMIN_DEFAULT_PASSWORD: admin
+#    ports:
+#      - "5050:80"
+#    depends_on:
+#      db:
+#        condition: service_healthy
 
 volumes:
-  lockfit_pg_data:
+  db_data:
