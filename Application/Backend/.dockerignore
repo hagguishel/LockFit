@@ -1,0 +1,12 @@
+# Réduit la taille du contexte Docker
+node_modules
+dist
+npm-debug.log
+yarn.lock
+.pnpm-lock.yaml
+.git
+.gitignore
+.DS_Store
+coverage
+.env
+.env.*

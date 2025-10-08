@@ -1,32 +1,55 @@
 version: "3.9"
+
 services:
-  postgres:
+  # === DB locale (active-la seulement si tu veux bosser sans DB partagée) ===
+  db:
     image: postgres:16
-    container_name: lockfit-postgres
+    container_name: lockfit_db
+    restart: unless-stopped
     environment:
+      POSTGRES_DB: lockfit
       POSTGRES_USER: lockfit
       POSTGRES_PASSWORD: lockfit
-      POSTGRES_DB: lockfit
     ports:
       - "5432:5432"
     volumes:
-      - lockfit_pg_data:/var/lib/postgresql/data
-    healthcheck:
-      test: ["CMD-SHELL", "pg_isready -U lockfit -d lockfit"]
-      interval: 5s
-      timeout: 5s
-      retries: 20
+      - pgdata:/var/lib/postgresql/data
+    profiles: ["local-db"]
 
+  # (Optionnel) UI web pour la DB locale
   pgadmin:
     image: dpage/pgadmin4:8
-    container_name: lockfit-pgadmin
+    container_name: lockfit_pgadmin
+    restart: unless-stopped
     environment:
-      PGADMIN_DEFAULT_EMAIL: admin@lockfit.local
+      PGADMIN_DEFAULT_EMAIL: admin@local.test
       PGADMIN_DEFAULT_PASSWORD: admin
     ports:
       - "5050:80"
     depends_on:
-      - postgres
+      - db
+    profiles: ["local-db"]
+
+  # === Backend NestJS (dev) ===
+  backend:
+    image: node:20
+    container_name: lockfit_backend
+    working_dir: /app
+    volumes:
+      - ./Backend:/app
+      - /app/node_modules
+    env_file:
+      - ./Backend/.env
+    environment:
+      PORT: "3001"
+      CHOKIDAR_USEPOLLING: "true"   # watch fiable dans un conteneur
+    command: >
+      sh -lc "npm ci || npm i
+      && npx prisma generate || true
+      && npm run start:dev"
+    ports:
+      - "3001:3001"
+    # ⚠️ Pas de depends_on:db ici pour rester compatible avec une DB partagée (Neon/Supabase)
 
 volumes:
-  lockfit_pg_data:
+  pgdata:

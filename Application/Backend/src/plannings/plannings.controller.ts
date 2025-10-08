@@ -24,6 +24,7 @@ export class PlanningsController {
    	*/
 	@Post()
 	create(@Body() dto: CreerPlanningDto) {
+    console.log('test');
 		return this.service.create(dto);
 	}
 

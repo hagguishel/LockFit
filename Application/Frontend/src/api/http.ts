@@ -1,50 +1,155 @@
-// Fichier qui centralise la construction d’URL, en-têtes, sérialisation JSON, gestion des erreurs pour tous les appels.
+// http.ts — centralise la construction d’URL, les en-têtes, la sérialisation JSON et la gestion des erreurs
 
-const BASE = (process.env.EXPO_PUBLIC_API_URL || "").replace(/\/+$/, ""); // base d’URL lue depuis .env, on retire les / de fin
+// =======================================================
+// 🌐 Configuration de base de l'API
+// =======================================================
+const RAW_BASE = process.env.EXPO_PUBLIC_API_URL ?? "";
+export const API_BASE = RAW_BASE.trim().replace(/\/+$/, ""); // on retire les / en fin d’URL
+if (!API_BASE) {
+  // Sur téléphone réel, on DOIT fournir EXPO_PUBLIC_API_URL (tunnel HTTPS conseillé)
+  throw new Error(
+    "EXPO_PUBLIC_API_URL manquant (ex: https://<ton-tunnel>.trycloudflare.com/api/v1)"
+  );
+}
 
-type HttpOptions = {                                                      // options possibles pour un appel
-  method?: "GET" | "POST" | "PATCH" | "DELETE";                           // verbe HTTP
-  body?: any;                                                             // corps à envoyer (objet JS)
-  signal?: AbortSignal | null;                                            // permet d’annuler la requête
-  headers?: Record<string, string>;                                       // en-têtes supplémentaires
+// Petit helper pour assembler l’URL finale sans // doublons
+function buildUrl(path: string): string {
+  const p = path.startsWith("/") ? path : `/${path}`;
+  return `${API_BASE}${p}`.replace(/(?<!:)\/{2,}/g, "/"); // garde 'https://' intact
+}
+
+// =======================================================
+// ⚙️ Type d’options acceptées par la fonction http()
+// =======================================================
+export type HttpOptions = {
+  method?: "GET" | "POST" | "PATCH" | "DELETE";
+  body?: any;
+  signal?: AbortSignal | null;
+  headers?: Record<string, string>;
+  timeoutMs?: number;      // ⏱️ annule auto si trop long (par défaut 20s)
+  token?: string | null;   // 🔐 JWT si besoin → Authorization: Bearer <token>
 };
 
-export async function http<T = unknown>(path: string, opts: HttpOptions = {}) { // fonction générique d’appel HTTP
-  const url = `${BASE}${path.startsWith("/") ? "" : "/"}${path}`;              // construit l’URL finale proprement
+// =======================================================
+// ❗️Classe d’erreur personnalisée (conserve le code HTTP)
+// =======================================================
+export class HttpError extends Error {
+  status: number;
+  payload: any;
 
-  const {                                                                     // on récupère les options avec des valeurs par défaut
-    method = "GET",                                                           // par défaut on fait un GET
-    body,                                                                     // corps éventuel
-    signal = null,                                                            // pas de signal par défaut
-    headers: extraHeaders,                                                    // en-têtes en plus
+  constructor(status: number, message: string, payload?: any) {
+    super(message);
+    this.name = "HttpError";
+    this.status = status;
+    this.payload = payload;
+  }
+}
+
+// =======================================================
+// 🚀 Fonction principale http()
+// =======================================================
+export async function http<T = unknown>(
+  path: string,
+  opts: HttpOptions = {}
+): Promise<T | null> {
+  const url = buildUrl(path);
+
+  const {
+    method = "GET",
+    body,
+    signal: externalSignal = null,
+    headers: extraHeaders,
+    timeoutMs = 20000,
+    token = null,
   } = opts;
 
-  const init: RequestInit = {                                                 // objet d’init pour fetch()
-    method: method as RequestInit["method"],                                  // on caste pour rassurer TypeScript
-    headers: {                                                                // en-têtes à envoyer
-      "Content-Type": "application/json",                                     // on parle JSON
-      ...(extraHeaders ?? {}),                                                // on ajoute/écrase avec ceux fournis
-    } as HeadersInit,
+  const headers: Record<string, string> = {
+    "Content-Type": "application/json",
+    Accept: "application/json",
+    ...(extraHeaders ?? {}),
+  };
+  if (token) headers["Authorization"] = `Bearer ${token}`;
+
+  const init: RequestInit = {
+    method,
+    headers,
   };
 
-  if (signal) {                                                               // si on a un signal d’annulation
-    (init as any).signal = signal;                                            // on le met dans l’init (cast simple)
+  // 🚫 Pas de body pour GET
+  if (body !== undefined && body !== null && method !== "GET") {
+    init.body = JSON.stringify(body);
   }
 
-  if (body !== undefined && body !== null) {                                  // si on a un corps à envoyer
-    init.body = JSON.stringify(body);                                         // on le transforme en chaîne JSON
+  // ⏱️ Timeout + annulation
+  const controller = !externalSignal ? new AbortController() : null;
+  const combinedSignal = externalSignal ?? controller?.signal ?? null;
+  if (combinedSignal) init.signal = combinedSignal;
+
+  const timer = controller ? setTimeout(() => controller.abort(), timeoutMs) : null;
+
+  let res: Response;
+  try {
+    // Debug utile (tu peux commenter si bruyant)
+    // console.log("HTTP:", method, url);
+    res = await fetch(url, init);
+  } catch (e: any) {
+    if (timer) clearTimeout(timer);
+    // Erreur réseau (API down, mauvaise URL, HTTP clair bloqué, DNS tunnel, etc.)
+    const hint = [
+      `Échec réseau vers ${url}`,
+      `Vérifie :`,
+      `• Le tunnel HTTPS est bien actif (cloudflared en cours d’exécution)`,
+      `• L’URL dans .env (EXPO_PUBLIC_API_URL) est exacte et finit par /api/v1`,
+      `• Android ≥ 9/iOS bloquent souvent le HTTP clair → utilise HTTPS`,
+    ].join("\n");
+    throw new Error(`${e?.message || String(e)}\n${hint}`);
+  } finally {
+    if (timer) clearTimeout(timer);
   }
 
-  const res = await fetch(url, init);                                         // on envoie la requête
+  const contentType = res.headers.get("content-type") || "";
+  const isJson = contentType.includes("application/json");
+  const hasBody = res.status !== 204 && res.status !== 205;
 
-  const data = (await res.json().catch(() => null)) as T | null;              // on tente de lire du JSON (sinon null)
-
-  if (!res.ok) {                                                              // si le statut HTTP n’est pas 2xx
-    const msg =                                                               // on fabrique un message d’erreur lisible
-      (data && ((data as any).message || (data as any).error)) ||             // priorité au message d’erreur du back
-      `HTTP ${res.status}`;                                                   // sinon un fallback générique
-    throw new Error(Array.isArray(msg) ? msg.join("\n") : msg);               // on jette une Error avec un texte propre
+  let data: any = null;
+  if (hasBody && isJson) {
+    try {
+      data = await res.json();
+    } catch {
+      data = null;
+    }
   }
 
-  return data as T;                                                           // en succès, on renvoie les données JSON (ou null si 204)
+  if (!res.ok) {
+    const msg = (data && (data.message || data.error)) || `HTTP ${res.status}`;
+    const text = Array.isArray(msg) ? msg.join("\n") : String(msg);
+    throw new HttpError(res.status, text, data);
+  }
+
+  return (data as T) ?? null;
 }
+
+// =======================================================
+// 💡 Helpers pratiques
+// =======================================================
+export const httpGet = <T>(
+  path: string,
+  opts: Omit<HttpOptions, "method" | "body"> = {}
+) => http<T>(path, { ...opts, method: "GET" });
+
+export const httpPost = <T>(
+  path: string,
+  body?: any,
+  opts: Omit<HttpOptions, "method" | "body"> = {}
+) => http<T>(path, { ...opts, method: "POST", body });
+
+export const httpPatch = <T>(
+  path: string,
+  body?: any,
+  opts: Omit<HttpOptions, "method" | "body"> = {}
+) => http<T>(path, { ...opts, method: "PATCH", body });
+
+export const httpDelete = <T>(
+  path: string,
+  opts: Omit<HttpOptions, "method" | "body"> = {}
+) => http<T>(path, { ...opts, method: "DELETE" });
