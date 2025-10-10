@@ -11,7 +11,7 @@ services:
       POSTGRES_USER: lockfit
       POSTGRES_PASSWORD: lockfit
     ports:
-      - "5432:5432"
+      - "5433:5432"
     volumes:
       - pgdata:/var/lib/postgresql/data
     profiles: ["local-db"]
@@ -39,7 +39,7 @@ services:
       - ./Backend:/app
       - /app/node_modules
     env_file:
-      - ./Backend/.env
+      - ./Backend/.env.docker
     environment:
       PORT: "3001"
       CHOKIDAR_USEPOLLING: "true"   # watch fiable dans un conteneur
