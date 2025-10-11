@@ -6,26 +6,33 @@ import { PrismaService } from "../prisma/prisma.service";
 
 import * as argon2 from 'argon2';
 import { authenticator } from 'otplib';
+import { randomUUID } from 'crypto';
 
-// Payload minimal dans le JWT d'accès, suffisant pôur retrouver l'utilisateur côté API, sans exposer d'infos sensibles.
+const ACCESS_TTL  = process.env.JWT_ACCES_TTL   || '15m';
+const REFRESH_TTL = process.env.JWT_REFRESH_TTL || '30d';
+
+function FromAuthz(header: string | undefined) {
+    return (header || '').replace(/^Bearer\s+/i, ''); 
+}
+
 type AccesTokenPayload = {
-    sub: string;          // userId
+    sub: string;
     email: string;
 };
 
-// Type de retour standard lors d'un login/signup
+// Type de retour standard lors d'un login/signup (CORRIGÉ)
 type AuthResult = {
-    accessToken: string;    // le JWT d'accès que le front stocke
+    accessToken: string;
+    refreshToken: string;
     user: {
         id: string;
         email: string;
         firstName: string;
         lastName: string;
-        mfaEnabled: boolean;   // indique si la MFA est activée sur ce compte
+        mfaEnabled: boolean;
     };
 };
 
-// provisoire, côté service, pour avancer sans créer encore les fichiers DTO
 type SignupInput = {
     email: string;
     password: string;
@@ -41,23 +48,47 @@ type LoginInput = {
 @Injectable()
 export class AuthService {
     constructor(
-        private readonly prisma: PrismaService,   //Acces base de données
+        private readonly prisma: PrismaService,
         private readonly jwt: JwtService,
     ) {
-        authenticator.options = {   // La configuration du MFA  avec Google authentificator
-            step: Number(process.env.TOTP_STEP ?? 30),   //Periode en secondes
-            digits: Number(process.env.TOTP_DIGITS ?? 6), //nombre de chiffres
-            window: Number(process.env.TOTP_WINDOW ?? 1), // tolérance du au décalage d'horloge
+        authenticator.options = {
+            step: Number(process.env.TOTP_STEP ?? 30),
+            digits: Number(process.env.TOTP_DIGITS ?? 6),
+            window: Number(process.env.TOTP_WINDOW ?? 1),
             algorithm: (process.env.TOTP_ALGO as any) ?? 'SHA1',
         };
     }
 
-    private async signAccessToken(utilisateur: { id: string; email: string}): Promise<string> { // fonction asynchrone qui attend une chaine (le jwt)
-        const payload: AccesTokenPayload = { sub: utilisateur.id, email: utilisateur.email };
-        return this.jwt.signAsync(payload);
+    // CORRIGÉ: Renommé pour correspondre à l'appel
+    private async issueTokens(utilisateur: { id: string; email: string }) {
+        // 1) ACCESS TOKEN (durée courte)
+        const accessToken = await this.jwt.signAsync(
+            { sub: utilisateur.id, email: utilisateur.email },
+            {
+                secret: process.env.JWT_ACCES_SECRET,
+                expiresIn: ACCESS_TTL,
+            },
+        );
+
+        // 2) REFRESH TOKEN (durée longue) + identifiant unique
+        const tokenId = randomUUID();
+        const refreshToken = await this.jwt.signAsync(
+            { sub: utilisateur.id, tokenId },
+            {
+                secret: process.env.JWT_REFRESH_SECRET,
+                expiresIn: REFRESH_TTL,
+            },
+        );
+
+        // 3) Stocker uniquement le hash du refresh (jamais en clair)
+        const tokenHash = await argon2.hash(refreshToken);
+        await this.prisma.refreshToken.create({
+            data: { utilisateurId: utilisateur.id, tokenHash },
+        });
+
+        return { accessToken, refreshToken };
     }
 
-    // Retourne l'objet utilisateur "public" (sans password, sans secret MFA), but : ne pas envoyer les infos sensibles
     private toPublicUser(u: any) {
         return {
             id: u.id,
@@ -68,21 +99,16 @@ export class AuthService {
         };
     }
 
-    // Inscription : crée un user si l'email n'existe pas, hash le mot de passe avec argon2,
-    // puis émet un access token.
     async signup(input: SignupInput): Promise<AuthResult> {
         const { email, password, firstName, lastName } = input;
 
-        //Vérifie l'unicité de l'email
-        const emailexist =  await this.prisma.utilisateur.findUnique({ where: { email } });
+        const emailexist = await this.prisma.utilisateur.findUnique({ where: { email } });
         if (emailexist) {
             throw new ConflictException('Email déjà existante');
         }
 
-        //Le sel est automatiquement appliqué dans le hashage par argon2
         const passwordHash = await argon2.hash(password);
 
-        //Créer l'utilisateur
         const user = await this.prisma.utilisateur.create({
             data: {
                 email,
@@ -92,88 +118,74 @@ export class AuthService {
             },
         });
 
-        //Emet un accesToken a l'utilisateur. Attend la promesse de signAccesToken, pour envoyer le token
-        const accessToken = await this.signAccessToken({ id: user.id, email: user.email });
+        const { accessToken, refreshToken } = await this.issueTokens({
+            id: user.id,
+            email: user.email,
+        });
 
         return {
             accessToken,
+            refreshToken,
             user: this.toPublicUser(user),
         };
     }
 
-    // --------- LOGIN (sans MFA) ---------
-
-    // Connexion standard : vérifie l'email + hash argon2.
-    // Si le compte a MFA activé, on retourne un "hint" côté front pour lancer le step MFA (optionnel).
-    async login(input: LoginInput): Promise<AuthResult & { mfaRequired?: boolean }> {
+    // CORRIGÉ: Type de retour cohérent
+    async login(input: LoginInput): Promise<AuthResult | { mfaRequired: true; user: AuthResult['user'] }> {
         const { email, password } = input;
 
-        // 1) Récupérer l'utilisateur par email
         const user = await this.prisma.utilisateur.findUnique({ where: { email } });
         if (!user) {
-            // Pour éviter de "leaker" si l'email existe, on répond un Unauthorized générique
             throw new UnauthorizedException('Identifiants invalides');
         }
 
-        // 2) Vérifier le mot de passe (argon2.verify)
         const ok = await argon2.verify(user.password, password);
         if (!ok) {
             throw new UnauthorizedException('Identifiants invalides');
         }
 
-        // 3) Si MFA activé, on peut exiger une étape supplémentaire côté front
         if (user.mfaEnabled) {
-            // Deux approches possibles :
-            // A) Retourner un flag mfaRequired=true et NE PAS délivrer de token ici.
-            // B) Délivrer un "token temporaire" ou un "challengeId" et demander le TOTP ensuite.
-            // Pour rester simple (V1), on exige une vérification TOTP séparée et on NE délivre pas l'access token ici.
             return {
-                accessToken: '', // pas de token tant que le TOTP n’est pas validé
-                user: this.toPublicUser(user),
                 mfaRequired: true,
+                user: this.toPublicUser(user),
             };
         }
 
-        // 4) Sinon, login direct : on signe et on retourne
-        const accessToken = await this.signAccessToken({ id: user.id, email: user.email });
+        const { accessToken, refreshToken } = await this.issueTokens({
+            id: user.id,
+            email: user.email,
+        });
 
         return {
             accessToken,
+            refreshToken,
             user: this.toPublicUser(user),
         };
     }
 
-    //-----MFA (TOTP).
-    // Le serveur et l'app d'auth (google authentificator) partagent le même secret
-
-    //MfaCreateSecret: fonction qui créer le secret initial
     async mfaCreateSecret(id: string) {
         const user = await this.prisma.utilisateur.findUnique({ where: { id } });
         if (!user) throw new BadRequestException('Utilisateur introuvable');
         
-        //Génère le secret en Base32. Ce secret sera la "graine" pour générer tous les codes à 6 chiffres
         const secret = authenticator.generateSecret();
-
         const issuer = process.env.APP_NAME || 'LockFit';
         const label = user.email;
-        const otpauthUrl = authenticator.keyuri(label, issuer, secret); //Créer l'url spéciale qui contient issuer, label, et secret
+        const otpauthUrl = authenticator.keyuri(label, issuer, secret);
         
-        //Met a jour l'utilisateur dans la base de données
         await this.prisma.utilisateur.update({
             where: { id: user.id },
-            data: { mfaSecret: secret }, //Sauvegarde le secret dans la colonne mfaSecret
+            data: { mfaSecret: secret },
         });
 
         return { secret, otpauthUrl };
     }
 
-    async mfaEnable(id: string, totpCode: string) { //Prend l'id utilisateur et le code a 6 chiffres que l'utilisateur a vu sur son app 
+    async mfaEnable(id: string, totpCode: string) {
         const user = await this.prisma.utilisateur.findUnique({ where: { id } });
-        if (!user || !user.mfaSecret) { //Si pas d'utilisateur ou n'a pas fait l'etape 1
+        if (!user || !user.mfaSecret) {
             throw new BadRequestException('Double authentification non initialisé');
         }
 
-        //MOMENT CRUCIAL: On verifie si le code est bon
         const isValid = authenticator.verify({
             token: totpCode,
             secret: user.mfaSecret
@@ -184,22 +196,21 @@ export class AuthService {
         }
 
         const updated = await this.prisma.utilisateur.update({
-            where : { id: user.id },
+            where: { id: user.id },
             data: { mfaEnabled: true },
         });
 
-        //A partir d'ici, l'utilisateur devra mettre un code pour se connecter
         return { mfaEnabled: updated.mfaEnabled };
     }
 
     async mfaVerifyDuringLogin(email: string, totpCode: string): Promise<AuthResult> {
         const user = await this.prisma.utilisateur.findUnique({ where: { email } });
 
-        if (!user || !user.mfaEnabled || !user.mfaSecret) { // Si l'utilsateur n'a pas la MFA activée ou n'a pas de secret
+        if (!user || !user.mfaEnabled || !user.mfaSecret) {
             throw new BadRequestException('MFA non active pour cet utilisateur');
         }
 
-        const ok = authenticator.verify({ // on vérifie le code TOTP comme dans mfaEnable  
+        const ok = authenticator.verify({
             token: totpCode,
             secret: user.mfaSecret
         });
@@ -208,14 +219,89 @@ export class AuthService {
             throw new UnauthorizedException('Code TOTP invalide');
         }
 
-        const accessToken = await this.signAccessToken({
+        const { accessToken, refreshToken } = await this.issueTokens({
             id: user.id,
-            email: user.email
+            email: user.email,
         });
 
         return {
             accessToken,
+            refreshToken,
             user: this.toPublicUser(user),
         };
+    }
+
+    // AJOUT: Méthodes manquantes pour refresh et logout
+    async refresh(userId: string, tokenId: string, authzHeader: string) {
+        const refreshToken = FromAuthz(authzHeader);
+        
+        // Vérifier que le refresh token existe en base
+        const storedToken = await this.prisma.refreshToken.findFirst({
+            where: { 
+                utilisateurId: userId,
+                revoked: false
+            }
+        });
+
+        if (!storedToken) {
+            throw new UnauthorizedException('Token invalide ou révoqué');
+        }
+
+        // Vérifier le hash
+        const isValid = await argon2.verify(storedToken.tokenHash, refreshToken);
+        if (!isValid) {
+            throw new UnauthorizedException('Token invalide');
+        }
+
+        // Révoquer l'ancien refresh token
+        await this.prisma.refreshToken.update({
+            where: { id: storedToken.id },
+            data: { revoked: true }
+        });
+
+        // Récupérer l'utilisateur
+        const user = await this.prisma.utilisateur.findUnique({
+            where: { id: userId }
+        });
+
+        if (!user) {
+            throw new UnauthorizedException('Utilisateur introuvable');
+        }
+
+        // Émettre de nouveaux tokens
+        const { accessToken, refreshToken: newRefreshToken } = await this.issueTokens({
+            id: user.id,
+            email: user.email,
+        });
+
+        return {
+            accessToken,
+            refreshToken: newRefreshToken,
+            user: this.toPublicUser(user),
+        };
+    }
+
+    async logout(userId: string, authzHeader: string) {
+        const refreshToken = FromAuthz(authzHeader);
+        
+        // Trouver et révoquer le refresh token
+        const storedToken = await this.prisma.refreshToken.findFirst({
+            where: { 
+                utilisateurId: userId,
+                revoked: false
+            }
+        });
+
+        if (storedToken) {
+            const isValid = await argon2.verify(storedToken.tokenHash, refreshToken);
+            if (isValid) {
+                await this.prisma.refreshToken.update({
+                    where: { id: storedToken.id },
+                    data: { revoked: true }
+                });
+            }
+        }
+
+        return { message: 'Déconnexion réussie' };
     }
 }

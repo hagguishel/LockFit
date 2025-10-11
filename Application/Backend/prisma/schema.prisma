@@ -63,13 +63,29 @@ model PlanningJour {
 }
 
 model Utilisateur {
-  id          String    @id @default(cuid())
-  email       String    @unique
-  password    String
-  firstName   String
-  lastName    String
-  mfaEnabled  Boolean   @default(false)
-  mfaSecret   String?
-  createdAt   DateTime @default(now())
-  updatedAt   DateTime @updatedAt 
+  id             String    @id @default(cuid())
+  email          String    @unique
+  password       String
+  firstName      String
+  lastName       String
+  mfaEnabled     Boolean   @default(false)
+  mfaSecret      String?
+  createdAt      DateTime @default(now())
+  updatedAt      DateTime @updatedAt 
+
+  refreshTokens  RefreshToken[]
+}
+
+model RefreshToken {
+  id              String        @id @default(cuid())
+  utilisateurId   String
+  tokenHash       String
+  revoked         Boolean       @default(false)
+  createdAt       DateTime      @default(now())
+  revokedAt       DateTime?
+
+  utilisateur     Utilisateur   @relation(fields : [utilisateurId], references:  [id])
+
+  @@index([utilisateurId, revoked])
+  @@map("refresh_tokens")
 }

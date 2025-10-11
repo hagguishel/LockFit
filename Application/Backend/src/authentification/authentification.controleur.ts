@@ -58,7 +58,7 @@ class MfaCodeDto {      //DTO pour /mfa/enable (activer la MFA) : on attend uniq
   totpCode!: string;
 }
 
-@Controller('/api/v1/auth') // Préfixe commun à toutes les routes d'auth
+@Controller('auth') // Préfixe commun à toutes les routes d'auth
 export class AuthController {
   constructor(private readonly authService: AuthService) {}
 
@@ -105,5 +105,28 @@ export class AuthController {
   @HttpCode(200)
   async mfaVerifyDuringLogin(@Body() body: MfaVerifyLoginDto) {
     return this.authService.mfaVerifyDuringLogin(body.email, body.totpCode);
+  }
+
+  @Post('refresh')
+  @UseGuards(AuthGuard('jwt-refresh'))
+  @HttpCode(200)
+  async refresh(@Req() req: Request) {
+  // 1) Récupérer le header Authorization brut (contient le refresh token)
+    const authz = (req.headers['authorization'] as string) || '';
+  // 2) Le payload du refresh validé par la stratégie est disponible dans req.user
+    const { sub, tokenId } = (req.user as any);
+  // 3) Déléguer au service: vérifier le hash en base, révoquer l’ancien, renvoyer nouveaux tokens
+    return this.authService.refresh(sub, tokenId, authz);
+}
+
+  @Post('logout')
+  @UseGuards(AuthGuard('jwt-refresh'))
+  @HttpCode(200)
+  async logout(@Req() req: Request) {
+  // 1) On lit le refresh token brut pour vérifier son hash et le marquer révoqué
+    const authz = (req.headers['authorization'] as string) || '';
+    const { sub } = (req.user as any);
+  // 2) Le service révoque le refresh courant (sécurité)
+    return this.authService.logout(sub, authz);
   }
 }

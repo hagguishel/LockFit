@@ -9,6 +9,7 @@ import { PrismaModule } from './prisma/prisma.module'; // Module qui fournit Pri
 import { HealthController } from './commun/health.controller'; // Utilisé pour tester l'API
 import { APP_GUARD } from '@nestjs/core';
 import { PlanningsModule } from './plannings/plannings.module';
+import { AuthModule } from './authentification/authentification.module';
 
 @Module({
   imports: [
@@ -16,6 +17,7 @@ import { PlanningsModule } from './plannings/plannings.module';
     ThrottlerModule.forRoot([{ ttl: 60_000, limit: 60 }]), //limite le nombre de requêtes a 60
     PrismaModule, // expose Prisma pour que l'app puisse l'utiliser partout
     WorkoutsModule, PlanningsModule, // Ajoute les routes dans l'app
+    AuthModule,
   ],
   controllers: [HealthController],
   providers: [

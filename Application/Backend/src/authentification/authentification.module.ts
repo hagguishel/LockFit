@@ -8,10 +8,12 @@ import { PassportModule } from "@nestjs/passport"; // Integre les stratégies d'
 import { AuthService } from './authentification.service';
 import { AuthController } from './authentification.controleur';
 
-// Stratégie JWT : lit le header Authorization, vérifie la signature et attache le payload à req.use
+// Stratégie JWT : lit le header Authorization, vérifie la signature et attache le payload à req.user
 
 // Accès a la base de données avec Prisma
 import { PrismaService } from "../prisma/prisma.service";
+import { JwtStrategy } from "./strategies/jwt.strategy";
+import { RefreshJwtStrategy } from "./strategies/refresh.strategy";
 
 @Module({
     imports: [
@@ -22,7 +24,7 @@ import { PrismaService } from "../prisma/prisma.service";
         // Configure le module JWT de manière asynchrone pour lire les secrets depuis les variables d'environnement
         JwtModule.registerAsync({
             useFactory: () => ({
-                secret: process.env.JWT_ACCES_SECRET,
+                secret: process.env.JWT_ACCESS_SECRET,
 
                 signOptions: {
                     expiresIn: process.env.JWT_ACCES_TTL || '15m',
@@ -37,7 +39,7 @@ import { PrismaService } from "../prisma/prisma.service";
     // - AuthService : inscription, login, MFA (argon2 + otplib utilisés dans le service)
     // - JwtStrategy : vérifie les tokens entrants
     // - PrismaService : accès BD (users, etc.)
-    providers: [AuthService, PrismaService],
+    providers: [AuthService, PrismaService, JwtStrategy, RefreshJwtStrategy],
 
     // Exporte certains éléments pour réutilisation par d'autres modules si besoin
     // (par exemple, utiliser JwtService ailleurs pour signer un token)
