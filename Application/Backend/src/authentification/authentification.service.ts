@@ -11,6 +11,26 @@ import { randomUUID } from 'crypto';
 const ACCESS_TTL  = process.env.JWT_ACCES_TTL   || '15m';
 const REFRESH_TTL = process.env.JWT_REFRESH_TTL || '30d';
 
+//AJOUT: fonction helper pour convertir une string en nombre ( pour problèmes de typage)
+function parseTTL(ttl: string): number {
+    const match = ttl.match(/^(\d+)([smhd])$/);
+    if (!match) {
+        // Si pas de format reconnu, retourner un nombre par défaut
+        return 900; // 15 minutes
+    }
+    
+    const value = parseInt(match[1]);
+    const unit = match[2];
+    
+    switch(unit) {
+        case 's': return value;
+        case 'm': return value * 60;
+        case 'h': return value * 3600;
+        case 'd': return value * 86400;
+        default: return 900;
+    }
+}
+
 function FromAuthz(header: string | undefined) {
     return (header || '').replace(/^Bearer\s+/i, ''); 
 }
@@ -65,8 +85,8 @@ export class AuthService {
         const accessToken = await this.jwt.signAsync(
             { sub: utilisateur.id, email: utilisateur.email },
             {
-                secret: process.env.JWT_ACCES_SECRET,
-                expiresIn: ACCESS_TTL,
+                secret: process.env.JWT_ACCESS_SECRET,
+                expiresIn: parseTTL(ACCESS_TTL),
             },
         );
 
@@ -76,7 +96,7 @@ export class AuthService {
             { sub: utilisateur.id, tokenId },
             {
                 secret: process.env.JWT_REFRESH_SECRET,
-                expiresIn: REFRESH_TTL,
+                expiresIn: parseTTL(REFRESH_TTL),
             },
         );
 

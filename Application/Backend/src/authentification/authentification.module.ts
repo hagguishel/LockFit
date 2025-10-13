@@ -27,7 +27,7 @@ import { RefreshJwtStrategy } from "./strategies/refresh.strategy";
                 secret: process.env.JWT_ACCESS_SECRET,
 
                 signOptions: {
-                    expiresIn: process.env.JWT_ACCES_TTL || '15m',
+                    expiresIn: (process.env.JWT_ACCESS_TTL || '15m') as any,
                 },
             }),
         }),
