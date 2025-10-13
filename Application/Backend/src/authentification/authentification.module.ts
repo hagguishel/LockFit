@@ -15,6 +15,24 @@ import { PrismaService } from "../prisma/prisma.service";
 import { JwtStrategy } from "./strategies/jwt.strategy";
 import { RefreshJwtStrategy } from "./strategies/refresh.strategy";
 
+function parseTTL(ttl: string | undefined, defaultSeconds: number): number {
+    if (!ttl) return defaultSeconds;
+    
+    const match = ttl.match(/^(\d+)([smhd])$/);
+    if (!match) return defaultSeconds;
+    
+    const value = parseInt(match[1]);
+    const unit = match[2];
+    
+    switch(unit) {
+        case 's': return value;
+        case 'm': return value * 60;
+        case 'h': return value * 3600;
+        case 'd': return value * 86400;
+        default: return defaultSeconds;
+    }
+}
+
 @Module({
     imports: [
         //Branche Passport et déclare la stratégie par default  "jwt"
@@ -27,7 +45,7 @@ import { RefreshJwtStrategy } from "./strategies/refresh.strategy";
                 secret: process.env.JWT_ACCESS_SECRET,
 
                 signOptions: {
-                    expiresIn: (process.env.JWT_ACCESS_TTL || '15m') as any,
+                    expiresIn: parseTTL(process.env.JWT_ACCESS_TTL, 900),
                 },
             }),
         }),
