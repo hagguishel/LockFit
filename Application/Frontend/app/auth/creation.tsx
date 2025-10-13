@@ -4,7 +4,7 @@ import { SafeAreaView } from "react-native-safe-area-context";
 import { useRouter } from "expo-router"; // <-- on n'importe que le hook
 
 // Configure l'URL API
-const API = process.env.EXPO_PUBLIC_API_URL ?? "http://localhost:3001";
+const API = process.env.EXPO_PUBLIC_API_URL ?? "http://localhost:3001/api/v1";
 
 export default function SignUpScreen() {
     const router = useRouter(); //pour revenir en arrière ou changer d'écran
@@ -25,7 +25,7 @@ export default function SignUpScreen() {
         setLoading(true); //active le spinner
 
         try {
-            const res = await fetch(`${API}/api/v1/auth/signup`, {
+            const res = await fetch(`${API}/auth/signup`, {
                 method: "POST", //on envoie les données avec une méthode post
                 headers: { "Content-Type": "application/json" }, //on envoie du json
                 body: JSON.stringify({ email, password, firstName, lastName }), //payload attendue par l'API

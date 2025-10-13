@@ -1,6 +1,6 @@
 // Écran d'accueil (premier écran du router)
 import { StatusBar } from "expo-status-bar";
-import { Text, View, StyleSheet, Pressable } from "react-native";
+import { Text, StyleSheet, Pressable } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
 import { Link } from "expo-router";
 
@@ -10,9 +10,9 @@ export default function HomeScreen() { //export la fonction HomeScreen comme pre
       <StatusBar style="light" />
       <Text style={styles.title}>LockFit</Text>
       <Text style={styles.subtitle}>Ta clé pour la performance</Text>
-      
+
       {/*Bouton vers la création de compte*/}
-      <Link href ="/auth/signup" asChild>
+      <Link href ="/auth/creation" asChild>
         <Pressable style={[styles.cta, { marginBottom: 12}]}>
           <Text style={styles.ctaText}>Créer un compte</Text>
         </Pressable>
