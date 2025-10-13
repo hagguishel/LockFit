@@ -11,6 +11,13 @@ export default function HomeScreen() { //export la fonction HomeScreen comme pre
       <Text style={styles.title}>LockFit</Text>
       <Text style={styles.subtitle}>Ta clé pour la performance</Text>
       
+      {/*Bouton vers la création de compte*/}
+      <Link href ="/auth/signup" asChild>
+        <Pressable style={[styles.cta, { marginBottom: 12}]}>
+          <Text style={styles.ctaText}>Créer un compte</Text>
+        </Pressable>
+      </Link>
+      
       {/* Bouton → /workouts (ouvre app/workouts/index.tsx) */}
       <Link href="/workouts" asChild>
         <Pressable style={styles.cta}>
