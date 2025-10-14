@@ -22,12 +22,20 @@ export type CreateWorkoutInput = { //Ce que renvoie POST /workouts
     finishedAt?: string;
 };
 
-export async function listWorkouts(params?: { from?: string; to?: string }) { //params peut contenir "from" et/ou "to". Coté back Nest, ca arrive sur findAll (from et to pour lister)
-    const qs = new URLSearchParams();                                         //créer un constructeur de query string
-    if (params?.from) qs.set("from", params.from);                            //Si params existe et qu'il contient un from, on ajoute une valeur a from
-    if (params?.to) qs.set("to", params.to);                                  //Si params existe et qu'il contient un to, on ajoute une valeur a to
-    const suffix = qs.toString() ? `?${qs.toString()}` : "";                  //S’il y a au moins un paramètre de filtre, fabrique ?from=...&to=.... Sinon, ne rajoute rien à l’URL.
-    return http<ListResponse>(`/workouts${suffix}`);
+export async function listWorkouts(params?: { from?: string; to?: string }): Promise<ListResponse> {
+  //params peut contenir "from" et/ou "to". Coté back Nest, ca arrive sur findAll (from et to pour lister)
+  const qs = new URLSearchParams();                                         //créer un constructeur de query string
+  if (params?.from) qs.set("from", params.from);                            //Si params existe et qu'il contient un from, on ajoute une valeur a from
+  if (params?.to) qs.set("to", params.to);                                  //Si params existe et qu'il contient un to, on ajoute une valeur a to
+  const suffix = qs.toString() ? `?${qs.toString()}` : "";                  //S’il y a au moins un paramètre de filtre, fabrique ?from=...&to=.... Sinon, ne rajoute rien à l’URL.
+
+  const data = await http<ListResponse>(`/workouts${suffix}`);
+
+  // 🔒 Normalisation: jamais null/undefined
+  return {
+    items: data?.items ?? [],
+    total: typeof data?.total === "number" ? data.total : (data?.items?.length ?? 0),
+  };
 }
 
 export async function getWorkout(id: string) {   //On attend une string car le cuid est une string

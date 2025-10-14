@@ -20,6 +20,7 @@ export default function HomeScreen() {
           </Pressable>
         </Link>
 
+        
         {/* Link 2 */}
         <Link href="/workouts" asChild>
           <Pressable style={styles.cta} accessibilityRole="button">

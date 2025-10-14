@@ -12,7 +12,7 @@ import {
   Text,
   View,
 } from "react-native";
-import { listWorkouts, type Workout } from "../../src/lib/workouts";
+import { listWorkouts, type Workout } from "../../../src/lib/workouts";
 
 export default function WorkoutsScreen() {
   const [items, setItems] = useState<Workout[]>([]);
