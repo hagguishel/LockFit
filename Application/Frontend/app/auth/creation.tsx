@@ -56,7 +56,7 @@ export default function SignUpScreen() {
     return (
         //écran avec marges respectant l'encoches + fond sombre
         <SafeAreaView style={styles.container} edges={["top", "bottom"]}>
-            <Text style={styles.title}>Créer un compte</Text>
+            <Text style={styles.title}>Créer ton compte dès maintenant ✌</Text>
 
             <View style={styles.form}>
                 {/* Champ prénom */}

@@ -10,20 +10,20 @@ export default function HomeScreen() {
     <SafeAreaView style={styles.container} edges={["top", "bottom"]}>
       <StatusBar style="light" />
       <Text style={styles.title}>LockFit</Text>
-      <Text style={styles.subtitle}>Ta clé pour la performance</Text>
+      <Text style={styles.subtitle}>Ta clé pour la performance 👊</Text>
 
       <View style={styles.buttons}>
         {/* Link 1 */}
         <Link href="/auth/creation" asChild>
           <Pressable style={styles.cta} accessibilityRole="button">
-            <Text style={styles.ctaText}>Créer un compte</Text>
+            <Text style={styles.ctaText}>Créer un compte 🔐</Text>
           </Pressable>
         </Link>
 
         {/* Link 2 */}
         <Link href="/workouts" asChild>
           <Pressable style={styles.cta} accessibilityRole="button">
-            <Text style={styles.ctaText}>→ Voir mes entraînements</Text>
+            <Text style={styles.ctaText}>Voir mes entraînements 💪</Text>
           </Pressable>
         </Link>
       </View>
