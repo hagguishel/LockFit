@@ -1,5 +1,5 @@
 import { StatusBar } from "expo-status-bar";
-import { Text, StyleSheet, Pressable, View } from "react-native";
+import { Text, StyleSheet, Pressable, View, Alert } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
 import { Link, useRouter } from "expo-router";
 
@@ -14,17 +14,15 @@ export default function HomeScreen() {
 
       <View style={styles.buttons}>
         {/* Link 1 */}
-        <Link href="/auth/creation" asChild>
-          <Pressable style={styles.cta} accessibilityRole="button">
-            <Text style={styles.ctaText}>Créer un compte 🔐</Text>
+          <Pressable style={styles.cta} onPress={() => Alert.alert("Bientôt, la possibilité de se connecter avec son compte")}>
+            <Text style={styles.ctaText}>Connexion 🔗</Text>
           </Pressable>
-        </Link>
 
         
         {/* Link 2 */}
-        <Link href="/workouts" asChild>
+        <Link href="/auth/creation" asChild>
           <Pressable style={styles.cta} accessibilityRole="button">
-            <Text style={styles.ctaText}>Voir mes entraînements 💪</Text>
+            <Text style={styles.ctaText}>Créer un compte 🔐</Text>
           </Pressable>
         </Link>
       </View>
