@@ -40,19 +40,15 @@ services:
       - ./Backend:/app
       - /app/node_modules
     env_file:
-      - ./Backend/.env.docker
+      - ./Backend/.env
     environment:
       PORT: "3001"
       NODE_ENV: development
       TZ: Europe/Paris
-      # On injecte la bonne URL côté config…
-      DATABASE_URL: "postgresql://lockfit:lockfit@db:5432/lockfit?schema=public"
-    depends_on:
-      db:
-        condition: service_healthy
+    # Suppression de depends_on car on utilise une DB externe (Neon/Supabase)
+    # Le DATABASE_URL viendra du fichier .env
     command: >
-      sh -lc 'export DATABASE_URL="postgresql://lockfit:lockfit@db:5432/lockfit?schema=public"
-      && (npm ci || npm i)
+      sh -lc '(npm ci || npm i)
       && (npx prisma generate || true)
       && npx prisma migrate deploy
       && npm run start:dev'

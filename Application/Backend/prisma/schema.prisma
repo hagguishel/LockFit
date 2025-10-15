@@ -1,5 +1,5 @@
-//Fichier qui se connecte a la db, et transforme les modèles en tables. Prisma s'en sert pour créer les tables ou les modifier.
-//Fichier a modifier lorsqu'il y'aura plusieurs utilisateurs, donc une filtration, et un système de "ownership" par utilisateurs.
+// Fichier qui se connecte à la DB et transforme les modèles en tables.
+// Prisma s'en sert pour créer les tables ou les modifier.
 
 generator client {
   provider = "prisma-client-js"
@@ -11,13 +11,13 @@ datasource db {
 }
 
 model Workout {
-  id         String    @id @default(cuid()) // ID auto (évite d'avoir à l'envoyer)
+  id         String    @id @default(cuid())
   title      String
   note       String?
   finishedAt DateTime?
 
   createdAt DateTime      @default(now())
-  updatedAt DateTime      @updatedAt // auto-mis à jour par Prisma
+  updatedAt DateTime      @updatedAt
   items     WorkoutItem[]
 
   // back-relation vers PlanningJour
@@ -29,7 +29,6 @@ model Planning {
   nom   String
   debut DateTime
   fin   DateTime
-  //  relation
   jours PlanningJour[]
 
   createdAt DateTime @default(now())
@@ -53,13 +52,13 @@ model PlanningJour {
   workout   Workout @relation(fields: [workoutId], references: [id], onDelete: Restrict)
   workoutId String
 
-  // suivi d'execution
+  // suivi d'exécution
   status PlanningJourStatus @default(PLANNED)
   doneAt DateTime?
 
-  // empecher le meme Workout 2x le meme jour dans un meme planning
+  // empêcher le même Workout 2x le même jour dans un même planning
   @@unique([planningId, date, workoutId])
-  // index pour requetes rapides par jour
+  // index pour requêtes rapides par jour
   @@index([planningId, date])
 }
 
@@ -71,8 +70,8 @@ model Utilisateur {
   lastName       String
   mfaEnabled     Boolean   @default(false)
   mfaSecret      String?
-  createdAt      DateTime @default(now())
-  updatedAt      DateTime @updatedAt 
+  createdAt      DateTime  @default(now())
+  updatedAt      DateTime  @updatedAt 
 
   refreshTokens  RefreshToken[]
 }
@@ -85,14 +84,15 @@ model RefreshToken {
   createdAt       DateTime      @default(now())
   revokedAt       DateTime?
 
-  utilisateur     Utilisateur   @relation(fields : [utilisateurId], references:  [id])
+  utilisateur     Utilisateur   @relation(fields: [utilisateurId], references: [id])
 
   @@index([utilisateurId, revoked])
   @@map("refresh_tokens")
 }
+
 model Exercise {
   id              String   @id @default(cuid())
-  slug            String   @unique // eg. "bench"
+  slug            String   @unique
   name            String
   primaryMuscle   String
   secondaryMuscle String?
@@ -100,7 +100,7 @@ model Exercise {
   level           String?
   instructions    String?
   mediaUrl        String?
-  source          String? // "ExerciseDB" | "wger" | "manual"
+  source          String?
   createdAt       DateTime @default(now())
   updatedAt       DateTime @updatedAt
 
@@ -120,7 +120,7 @@ model WorkoutItem {
   exercise Exercise     @relation(fields: [exerciseId], references: [id], onDelete: Restrict)
   sets     WorkoutSet[]
 
-  @@unique([workoutId, order]) // pas deux items au même ordre dans une séance
+  @@unique([workoutId, order])
   @@index([exerciseId])
 }
 
@@ -135,32 +135,4 @@ model WorkoutSet {
   item          WorkoutItem @relation(fields: [workoutItemId], references: [id], onDelete: Cascade)
 
   @@index([workoutItemId])
-}
-
-model Utilisateur {
-  id             String    @id @default(cuid())
-  email          String    @unique
-  password       String
-  firstName      String
-  lastName       String
-  mfaEnabled     Boolean   @default(false)
-  mfaSecret      String?
-  createdAt      DateTime @default(now())
-  updatedAt      DateTime @updatedAt 
-
-  refreshTokens  RefreshToken[]
-}
-
-model RefreshToken {
-  id              String        @id @default(cuid())
-  utilisateurId   String
-  tokenHash       String
-  revoked         Boolean       @default(false)
-  createdAt       DateTime      @default(now())
-  revokedAt       DateTime?
-
-  utilisateur     Utilisateur   @relation(fields : [utilisateurId], references:  [id])
-
-  @@index([utilisateurId, revoked])
-  @@map("refresh_tokens")
 }

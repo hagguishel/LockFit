@@ -37,6 +37,10 @@ if have docker; then DC="docker compose"; elif have docker-compose; then DC="doc
 for bin in curl grep sed awk; do have "$bin" || die "Commande manquante: $bin"; done
 if [ "$NO_TUNNEL" -eq 0 ]; then have cloudflared || die "cloudflared manquant (sudo apt install cloudflared)"; fi
 
+# Fichiers compose (base + éventuel override)
+COMPOSE_FILES="-f \"$ROOT_DIR/docker-compose.yml\""
+COMPOSE_FLAGS=""
+
 # ----------------- Checks -----------------
 [ -f "$BACK_ENV" ] || die "Backend env manquant: $BACK_ENV"
 PORT="$(grep -E '^PORT=' "$BACK_ENV" | tail -1 | cut -d= -f2 || true)"; PORT="${PORT:-3001}"
@@ -50,14 +54,35 @@ echo "🧩 Backend env : $BACK_ENV"
 echo "🌐 API port     : $PORT"
 echo "🗄️  Base        : $( [ "$NEED_LOCAL_DB" -eq 1 ] && echo 'locale (profile local-db)' || echo 'partagée (Neon/Supabase)' )"
 
+# Si DB hébergée : créer un override Compose éphémère qui retire depends_on: db (évite l'erreur d'undefined service)
+OVERRIDE_FILE=""
+if [ "$NEED_LOCAL_DB" -eq 0 ]; then
+  OVERRIDE_FILE="$(mktemp)"
+  cat > "$OVERRIDE_FILE" <<'YAML'
+services:
+  backend:
+    # Supprime toute dépendance à "db" en mode hébergé
+    depends_on: []
+YAML
+  COMPOSE_FILES="$COMPOSE_FILES -f \"$OVERRIDE_FILE\""
+else
+  COMPOSE_FLAGS="--profile local-db"
+fi
+
+# Petite fonction d'appel Compose avec -f multiples et flags profil
+compose() {
+  # shellcheck disable=SC2086
+  eval $DC $COMPOSE_FILES $COMPOSE_FLAGS "$@"
+}
+
 # ----------------- DB locale (si besoin) -----------------
 if [ "$NEED_LOCAL_DB" -eq 1 ]; then
   echo "▶️  Docker: DB locale …"
-  $DC --profile local-db up -d db
+  compose up -d db
   # petit wait pour la DB
   echo "⏳ Attente DB (pg_isready)…"
   for i in {1..30}; do
-    if $DC exec -T db pg_isready -U postgres -h localhost >/dev/null 2>&1; then
+    if compose exec -T db pg_isready -U postgres -h localhost >/dev/null 2>&1; then
       echo "✅ DB prête"
       break
     fi
@@ -67,14 +92,14 @@ fi
 
 # ----------------- Build backend (pour avoir Prisma CLI) -----------------
 echo "🏗️  Build image backend (pour Prisma CLI)…"
-$DC build backend >/dev/null
+compose build backend >/dev/null
 
 # ----------------- Prisma migrate (avant de lancer Nest) -----------------
 if [ "$NO_MIGRATE" -eq 0 ]; then
   echo "🗂️  Prisma: migrate deploy (avec retry)…"
   OK=0
   for i in {1..20}; do
-    if $DC run --rm backend npx prisma migrate deploy; then
+    if compose run --rm backend npx prisma migrate deploy; then
       OK=1; echo "✅ Migrations appliquées"; break
     fi
     echo "…retry $i/20 (DB pas encore prête ?)"
@@ -82,7 +107,7 @@ if [ "$NO_MIGRATE" -eq 0 ]; then
   done
   if [ "$OK" -eq 0 ]; then
     echo "⚠️  migrate deploy KO → fallback prisma db push"
-    $DC run --rm backend npx prisma db push
+    compose run --rm backend npx prisma db push
   fi
 else
   echo "⏭️  --no-migrate : skip des migrations"
@@ -90,7 +115,7 @@ fi
 
 # ----------------- Backend -----------------
 echo "▶️  Docker: backend …"
-$DC up -d backend
+compose up -d backend
 
 echo "⏳ Attente API http://localhost:$PORT/api/v1/health …"
 for i in {1..90}; do
@@ -103,7 +128,7 @@ for i in {1..90}; do
 done
 curl -fsS "http://localhost:$PORT/api/v1/health" >/dev/null || {
   echo "❌ L’API ne répond pas. Derniers logs backend :"
-  $DC logs --tail=120 backend || true
+  compose logs --tail=120 backend || true
   exit 1
 }
 
@@ -115,7 +140,7 @@ if [ "$NO_TUNNEL" -eq 0 ]; then
   rm -f "$LOG"
   ( cloudflared tunnel --url "http://localhost:$PORT" 2>&1 | tee "$LOG" ) &
   CF_PID=$!
-  trap 'kill "$CF_PID" 2>/dev/null || true' EXIT
+  trap 'kill "$CF_PID" 2>/dev/null || true; [ -n "$OVERRIDE_FILE" ] && rm -f "$OVERRIDE_FILE" 2>/dev/null || true' EXIT
 
   echo "⏳ Attente URL trycloudflare.com…"
   for _ in {1..40}; do
@@ -132,6 +157,9 @@ if [ "$NO_TUNNEL" -eq 0 ]; then
     exit 1
   fi
   echo "🌐 Tunnel API: $TUNNEL_URL"
+else
+  # Nettoyage de l'override à la sortie si pas de tunnel (pas de trap déclenché par background)
+  trap '[ -n "$OVERRIDE_FILE" ] && rm -f "$OVERRIDE_FILE" 2>/dev/null || true' EXIT
 fi
 
 # ----------------- .env Frontend -----------------
