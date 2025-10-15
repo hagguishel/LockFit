@@ -124,16 +124,6 @@ log_section "⚙️  Configuration de l'environnement"
 PORT="$(grep -E '^PORT=' "$BACK_ENV" | tail -1 | cut -d= -f2 || echo "3001")"
 PORT="${PORT:-3001}"
 
-<<<<<<< HEAD
-# Fichiers compose (base + éventuel override)
-COMPOSE_FILES="-f \"$ROOT_DIR/docker-compose.yml\""
-COMPOSE_FLAGS=""
-
-# ----------------- Checks -----------------
-[ -f "$BACK_ENV" ] || die "Backend env manquant: $BACK_ENV"
-PORT="$(grep -E '^PORT=' "$BACK_ENV" | tail -1 | cut -d= -f2 || true)"; PORT="${PORT:-3001}"
-=======
->>>>>>> Dev-Shel
 DBURL="$(grep -E '^DATABASE_URL=' "$BACK_ENV" | tail -1 | cut -d= -f2- || true)"
 [ -n "$DBURL" ] || die "DATABASE_URL absent dans $BACK_ENV"
 
@@ -145,38 +135,6 @@ echo "🧩 Backend .env : $BACK_ENV"
 echo "🌐 Port API     : $PORT"
 echo "🗄️  Base de données: $([ "$NEED_LOCAL_DB" -eq 1 ] && echo 'locale (Docker)' || echo 'distante (Neon/Supabase)')"
 
-<<<<<<< HEAD
-# Si DB hébergée : créer un override Compose éphémère qui retire depends_on: db (évite l'erreur d'undefined service)
-OVERRIDE_FILE=""
-if [ "$NEED_LOCAL_DB" -eq 0 ]; then
-  OVERRIDE_FILE="$(mktemp)"
-  cat > "$OVERRIDE_FILE" <<'YAML'
-services:
-  backend:
-    # Supprime toute dépendance à "db" en mode hébergé
-    depends_on: []
-YAML
-  COMPOSE_FILES="$COMPOSE_FILES -f \"$OVERRIDE_FILE\""
-else
-  COMPOSE_FLAGS="--profile local-db"
-fi
-
-# Petite fonction d'appel Compose avec -f multiples et flags profil
-compose() {
-  # shellcheck disable=SC2086
-  eval $DC $COMPOSE_FILES $COMPOSE_FLAGS "$@"
-}
-
-# ----------------- DB locale (si besoin) -----------------
-if [ "$NEED_LOCAL_DB" -eq 1 ]; then
-  echo "▶️  Docker: DB locale …"
-  compose up -d db
-  # petit wait pour la DB
-  echo "⏳ Attente DB (pg_isready)…"
-  for i in {1..30}; do
-    if compose exec -T db pg_isready -U postgres -h localhost >/dev/null 2>&1; then
-      echo "✅ DB prête"
-=======
 # ─────────────────────────────────────────────────────────────
 #  Cleanup
 # ─────────────────────────────────────────────────────────────
@@ -198,7 +156,6 @@ if [ "$NEED_LOCAL_DB" -eq 1 ]; then
   for i in $(seq 1 30); do
     if $DC exec -T db pg_isready -U postgres -h localhost >/dev/null 2>&1; then
       success "Base de données prête"
->>>>>>> Dev-Shel
       break
     fi
     [ "$i" -eq 30 ] && die "La base de données ne répond pas après 30s"
@@ -206,16 +163,10 @@ if [ "$NEED_LOCAL_DB" -eq 1 ]; then
   done
 fi
 
-<<<<<<< HEAD
-# ----------------- Build backend (pour avoir Prisma CLI) -----------------
-echo "🏗️  Build image backend (pour Prisma CLI)…"
-compose build backend >/dev/null
-=======
 # ─────────────────────────────────────────────────────────────
 #  Backend Build
 # ─────────────────────────────────────────────────────────────
 log_section "🏗️  Build de l'image backend"
->>>>>>> Dev-Shel
 
 $DC build backend >/dev/null 2>&1 || die "Échec du build backend"
 success "Image backend construite"
@@ -224,13 +175,6 @@ success "Image backend construite"
 #  Database Migrations
 # ─────────────────────────────────────────────────────────────
 if [ "$NO_MIGRATE" -eq 0 ]; then
-<<<<<<< HEAD
-  echo "🗂️  Prisma: migrate deploy (avec retry)…"
-  OK=0
-  for i in {1..20}; do
-    if compose run --rm backend npx prisma migrate deploy; then
-      OK=1; echo "✅ Migrations appliquées"; break
-=======
   log_section "🗂️  Application des migrations Prisma"
 
   MIGRATION_OK=0
@@ -239,53 +183,25 @@ if [ "$NO_MIGRATE" -eq 0 ]; then
       MIGRATION_OK=1
       success "Migrations appliquées avec succès"
       break
->>>>>>> Dev-Shel
     fi
     [ "$((i % 5))" -eq 0 ] && echo "   Tentative $i/20..."
     sleep 2
   done
-<<<<<<< HEAD
-  if [ "$OK" -eq 0 ]; then
-    echo "⚠️  migrate deploy KO → fallback prisma db push"
-    compose run --rm backend npx prisma db push
-=======
 
   if [ "$MIGRATION_OK" -eq 0 ]; then
     warn "migrate deploy a échoué, tentative avec db push..."
     $DC run --rm backend npx prisma db push || die "Impossible d'appliquer les migrations"
->>>>>>> Dev-Shel
   fi
 else
   info "Migrations Prisma ignorées (--no-migrate)"
 fi
 
-<<<<<<< HEAD
-# ----------------- Backend -----------------
-echo "▶️  Docker: backend …"
-compose up -d backend
-
-echo "⏳ Attente API http://localhost:$PORT/api/v1/health …"
-for i in {1..90}; do
-  if curl -fsS "http://localhost:$PORT/api/v1/health" >/dev/null; then
-    echo "✅ API OK"
-    break
-  fi
-  sleep 1
-  [ "$i" -eq 30 ] && echo "…toujours en attente (30s)"
-done
-curl -fsS "http://localhost:$PORT/api/v1/health" >/dev/null || {
-  echo "❌ L’API ne répond pas. Derniers logs backend :"
-  compose logs --tail=120 backend || true
-  exit 1
-}
-=======
 # ─────────────────────────────────────────────────────────────
 #  Backend Startup
 # ─────────────────────────────────────────────────────────────
 log_section "🚀 Démarrage du backend"
 
 $DC --profile local-db up -d backend
->>>>>>> Dev-Shel
 
 echo "⏳ Attente de l'API (http://localhost:$PORT/api/v1/health)..."
 if ! wait_for_service "http://localhost:$PORT/api/v1/health" 90 "API Backend"; then
@@ -317,19 +233,6 @@ if [ "$NO_TUNNEL" -eq 0 ]; then
     [ "$i" -eq 40 ] && die "Impossible d'établir le tunnel. Voir: $LOG_FILE"
     sleep 1
   done
-<<<<<<< HEAD
-
-  if ! echo "$TUNNEL_URL" | grep -q 'trycloudflare.com'; then
-    echo "❌ Pas d’URL tunnel détectée."
-    tail -n +1 "$LOG" || true
-    exit 1
-  fi
-  echo "🌐 Tunnel API: $TUNNEL_URL"
-else
-  # Nettoyage de l'override à la sortie si pas de tunnel (pas de trap déclenché par background)
-  trap '[ -n "$OVERRIDE_FILE" ] && rm -f "$OVERRIDE_FILE" 2>/dev/null || true' EXIT
-=======
->>>>>>> Dev-Shel
 fi
 
 # ─────────────────────────────────────────────────────────────

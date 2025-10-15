@@ -1,18 +1,7 @@
 // src/lib/workouts.ts
 // Client métier pour parler aux routes /workouts
 import { http } from "@/api/http";
-import type { Workout, Paginated, WorkoutItem, WorkoutSet } from "@/types/workout";
-
-
-<<<<<<< HEAD
-export type Workout = { //Basé sur le schema.prisma
-    id: string;
-    title: string;
-    note?: string | null;
-    finishedAt?: string | null;
-    createdAt: string;
-    updatedAt: string;
-};
+import type { Workout, WorkoutItem, WorkoutSet } from "@/types/workout";
 
 export type ListResponse = { //Ce que renvoie GET /workouts
     items: Workout[];
@@ -23,6 +12,7 @@ export type CreateWorkoutInput = { //Ce que renvoie POST /workouts
     title: string;
     note?: string;
     finishedAt?: string;
+    items?: WorkoutItem[];
 };
 
 export async function listWorkouts(params?: { from?: string; to?: string }): Promise<ListResponse> {
@@ -39,33 +29,18 @@ export async function listWorkouts(params?: { from?: string; to?: string }): Pro
     items: data?.items ?? [],
     total: typeof data?.total === "number" ? data.total : (data?.items?.length ?? 0),
   };
-=======
-/** Liste des séances (GET /workouts) */
-export async function listWorkouts(params?: { from?: string; to?: string }) {
-  const qs = new URLSearchParams();
-  if (params?.from) qs.set("from", params.from);
-  if (params?.to) qs.set("to", params.to);
-  const suffix = qs.toString() ? `?${qs.toString()}` : "";
-  return http<Paginated<Workout>>(`/workouts${suffix}`);
->>>>>>> Dev-Shel
 }
 
 /** Détail d’une séance (GET /workouts/:id) */
 export async function getWorkout(id: string): Promise<Workout> {
   const w = await http<Workout>(`/workouts/${id}`);
-  if (!w) throw new Error("Scéance introuvable");
+  if (!w) throw new Error("Séance introuvable");
   return w;
 }
 
 /** Création d’une séance (POST /workouts)
  *  NB: ton écran new.tsx envoie seulement { title } pour l’instant.
  */
-export type CreateWorkoutInput = {
-  title: string;
-  note?: string;
-  finishedAt?: string; // en pratique, souvent laissé vide
-  items?: any[];
-};
 
 export async function createWorkout(input: CreateWorkoutInput) {
   const payload = {
@@ -73,7 +48,7 @@ export async function createWorkout(input: CreateWorkoutInput) {
     note: input.note,
     finishedAt: input.finishedAt,
     items: Array.isArray(input.items) ? input.items : [],
-  }
+  };
   return http<Workout>("/workouts", { method: "POST", body: payload });
 }
 
@@ -101,7 +76,7 @@ export async function finishWorkout(id: string) {
 }
 
 // export pratique si tes écrans font `import { type Workout } from "@/lib/workouts"`
-export type { Workout };
+export type { Workout } from "@/types/workout";
 
 /** Ajout un item (exercise) à une scéance existante */
 
@@ -130,5 +105,5 @@ export async function addWorkoutItem(workoutId :string, input: NewWorkoutItemInp
   //4) PATCH /workouts/:id (http.ts)
   await updateWorkout(workoutId, { items });
 
-  return getWorkout(workoutId)
+  return getWorkout(workoutId);
 }

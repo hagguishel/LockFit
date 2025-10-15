@@ -7,7 +7,7 @@ import { createWorkout } from "@/api/workouts";
 type Props = NativeStackScreenProps<RootStackParamList, "Nouveau">;
 
 type TmpSet = { reps: string; weight: string; restSec: string };
-type TmpItem = { exerciseName: string; sets: TmpSet[] };
+type TmpItem = { exerciseId: string; sets: TmpSet[] };
 
 export default function FormulaireEntrainement({ navigation }: Props) {
   const [title, setTitle] = useState("");
@@ -19,7 +19,7 @@ export default function FormulaireEntrainement({ navigation }: Props) {
     const name = newExo.trim();
     if (!name) return;
     const item: TmpItem = {
-      exerciseName: name,
+      exerciseId: name,
       sets: [{ reps: "8", weight: "", restSec: "90" }],
     };
     setItems((prev) => [...prev, item]);
@@ -46,7 +46,7 @@ export default function FormulaireEntrainement({ navigation }: Props) {
   // ✅ CORRECTION 1 : Fonction pour convertir TmpItem en format API
   function convertItemsForApi() {
     return items.map(item => ({
-      exerciseName: item.exerciseName,
+      exerciseId: item.exerciseId,
       sets: item.sets.map(s => ({
         reps: parseInt(s.reps) || 0,
         weight: s.weight ? parseFloat(s.weight) : undefined,
@@ -135,7 +135,7 @@ export default function FormulaireEntrainement({ navigation }: Props) {
         ListEmptyComponent={<Text style={{ opacity: 0.7, marginTop: 8 }}>Aucun exercice ajouté pour l'instant.</Text>}
         renderItem={({ item, index }) => (
           <View style={{ marginTop: 12, padding: 12, borderWidth: 1, borderColor: "#333", borderRadius: 10 }}>
-            <Text style={{ fontWeight: "700" }}>{item.exerciseName}</Text>
+            <Text style={{ fontWeight: "700" }}>{item.exerciseId}</Text>
 
             {item.sets.map((s, sIdx) => (
               <View key={sIdx} style={{ flexDirection: "row", gap: 8, marginTop: 8 }}>
