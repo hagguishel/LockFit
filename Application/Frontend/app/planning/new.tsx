@@ -54,9 +54,9 @@ export default function NewPlanning() {
     try {
       setCreating(true);
       const p = await createPlanning({
-        title: trimmedTitle,
-        rangeStart: toISO(monday),
-        rangeEnd: toISO(sunday),
+        nom: trimmedTitle,
+        debut: toISO(monday),
+        fin: toISO(sunday),
       });
 
       if (!p || !p.id) {

@@ -257,7 +257,7 @@ export default function WorkoutDetailScreen() {
         <View style={s.card}>
           <Text style={s.sectionTitle}>+ Ajouter un exercice</Text>
 
-          <Text style={s.label}>exerciseId</Text>
+          <Text style={s.label}>Titre de l'exercice</Text>
           <TextInput
             value={exId}
             onChangeText={setExId}
@@ -268,7 +268,7 @@ export default function WorkoutDetailScreen() {
             editable={!data?.finishedAt}
           />
 
-          <Text style={s.label}>reps</Text>
+          <Text style={s.label}>Répétitions</Text>
           <TextInput
             value={reps}
             onChangeText={setReps}
@@ -279,7 +279,7 @@ export default function WorkoutDetailScreen() {
             editable={!data?.finishedAt}
           />
 
-          <Text style={s.label}>poids (kg, optionnel)</Text>
+          <Text style={s.label}>Poids (kg)</Text>
           <TextInput
             value={weight}
             onChangeText={setWeight}
@@ -290,7 +290,7 @@ export default function WorkoutDetailScreen() {
             editable={!data?.finishedAt}
           />
 
-          <Text style={s.label}>repos (sec, optionnel)</Text>
+          <Text style={s.label}>Temps de repos (sec)</Text>
           <TextInput
             value={rest}
             onChangeText={setRest}
