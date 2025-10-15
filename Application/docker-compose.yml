@@ -54,6 +54,7 @@ services:
       && npm run start:dev'
     ports:
       - "3001:3001"
+    profiles: ["local-db"]
 
 volumes:
   pgdata:

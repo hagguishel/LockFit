@@ -8,10 +8,15 @@ import {
   Text,
   View,
   Pressable,
+  TextInput,
 } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
 import { Stack, useLocalSearchParams, useFocusEffect, useRouter } from "expo-router";
+<<<<<<< HEAD:Application/Frontend/app/(tabs)/workouts/[id].tsx
 import { getWorkout, finishWorkout, type Workout } from "../../../src/lib/workouts";
+=======
+import { getWorkout, finishWorkout, type Workout, addWorkoutItem } from "../../src/lib/workouts";
+>>>>>>> Dev-Shel:Application/Frontend/app/workouts/[id].tsx
 
 export default function WorkoutDetailScreen() {
   const { id } = useLocalSearchParams<{ id: string }>();
@@ -21,6 +26,40 @@ export default function WorkoutDetailScreen() {
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
   const [finishing, setFinishing] = useState(false);
+  const [exId, setExId] = useState("");
+  const [reps, setReps] = useState("10");
+  const [weight, setWeight] = useState("");
+  const [rest, setRest] = useState("");
+  const [adding, setAdding] = useState(false);
+  const [doneSets, setDoneSets] = useState<Record<string, Set<number>>>({});
+
+  const keyFor = useCallback((exerciseId: string, order: number) =>
+    `${exerciseId}-${order}`, []
+  );
+
+  const toggleSet = useCallback((exerciseId: string, order: number, setIndex: number) => {
+    const k = keyFor(exerciseId, order);
+    setDoneSets(prev => {
+      const copy = { ...prev };
+      const s = new Set(copy[k] ?? []);
+      if (s.has(setIndex)) {
+        s.delete(setIndex);
+      } else {
+        s.add(setIndex);
+      }
+      copy[k] = s;
+      return copy;
+    });
+  }, [keyFor]);
+
+  const nextSet = useCallback((exerciseId: string, order: number, totalSets: number) => {
+    const k = keyFor(exerciseId, order);
+    const s = doneSets[k] ?? new Set<number>();
+    const next = [...Array(totalSets).keys()].find(i => !s.has(i));
+    if (next !== undefined) {
+      toggleSet(exerciseId, order, next);
+    }
+  }, [doneSets, keyFor, toggleSet]);
 
   const load = useCallback(async () => {
     try {
@@ -35,10 +74,16 @@ export default function WorkoutDetailScreen() {
   }, [id]);
 
   // Chargement initial
-  useEffect(() => { load(); }, [load]);
+  useEffect(() => {
+    load();
+  }, [load]);
 
-  // Recharge quand on revient sur l’écran
-  useFocusEffect(useCallback(() => { load(); }, [load]));
+  // Recharge quand on revient sur l'écran
+  useFocusEffect(
+    useCallback(() => {
+      load();
+    }, [load])
+  );
 
   const onRefresh = useCallback(async () => {
     setRefreshing(true);
@@ -66,12 +111,61 @@ export default function WorkoutDetailScreen() {
     }
   }, [data, id]);
 
+  const onAddItem = useCallback(async () => {
+    const exerciseId = exId.trim();
+    const r = Number(reps);
+    const wkg = weight ? Number(weight) : undefined;
+    const rs = rest ? Number(rest) : undefined;
+
+    if (!exerciseId) {
+      Alert.alert("Exercice requis", "Renseigne un exerciseId.");
+      return;
+    }
+
+    if (!Number.isFinite(r) || r <= 0) {
+      Alert.alert("Série", "Indique un nombre de répétitions valide (> 0).");
+      return;
+    }
+
+    try {
+      setAdding(true);
+      const updated = await addWorkoutItem(String(id), {
+        exerciseId,
+        reps: r,
+        weight: wkg,
+        rest: rs,
+      });
+
+      // Si le back ne renvoie pas les items complets, on refetch
+      if (!updated?.items || !Array.isArray(updated.items)) {
+        await load();
+      } else {
+        setData(updated);
+      }
+
+      // Reset du formulaire
+      setExId("");
+      setReps("10");
+      setWeight("");
+      setRest("");
+
+      Alert.alert("OK", "Exercice ajouté.");
+    } catch (e: any) {
+      Alert.alert("Erreur", e?.message || "Impossible d'ajouter l'exercice.");
+    } finally {
+      setAdding(false);
+    }
+  }, [exId, reps, weight, rest, id, load]);
+
   const title = data?.title || "Séance";
+
   const finishedAtText = useMemo(() => {
     if (!data?.finishedAt) return "🕓 En cours";
     const d = new Date(data.finishedAt);
     return `✅ Terminée le ${d.toLocaleDateString()} ${d.toLocaleTimeString()}`;
   }, [data?.finishedAt]);
+
+  const hasItems = (data?.items?.length ?? 0) > 0;
 
   if (loading && !data) {
     return (
@@ -89,7 +183,7 @@ export default function WorkoutDetailScreen() {
         contentContainerStyle={{ paddingBottom: 24 }}
         refreshControl={<RefreshControl refreshing={refreshing} onRefresh={onRefresh} />}
       >
-        {/* Carte d’info */}
+        {/* Carte d'info */}
         <View style={s.card}>
           {data?.note ? <Text style={s.note}>{data.note}</Text> : null}
           <Text style={s.status}>{finishedAtText}</Text>
@@ -97,11 +191,159 @@ export default function WorkoutDetailScreen() {
 
         {/* Actions */}
         {!data?.finishedAt && (
-          <Pressable style={[s.cta, finishing && { opacity: 0.6 }]} onPress={onFinish} disabled={finishing}>
-            <Text style={s.ctaText}>{finishing ? "Validation…" : "Marquer terminé"}</Text>
+          <Pressable
+            style={[s.cta, finishing && { opacity: 0.6 }]}
+            onPress={onFinish}
+            disabled={finishing}
+          >
+            <Text style={s.ctaText}>
+              {finishing ? "Validation…" : "Marquer terminé"}
+            </Text>
           </Pressable>
         )}
 
+        {/* Liste des exercices */}
+        {hasItems && (
+          <View style={s.card}>
+            <Text style={s.sectionTitle}>Exercices</Text>
+
+            {data!.items!.map((it, idx) => {
+              const k = keyFor(it.exerciseId, it.order);
+              const done = doneSets[k] ?? new Set<number>();
+
+              return (
+                <View key={`${it.exerciseId}-${it.order}-${idx}`} style={s.exerciseItem}>
+                  <View style={s.exerciseHeader}>
+                    <Text style={s.exerciseTitle}>
+                      #{it.order} - {it.exerciseId}
+                    </Text>
+                    <Text style={s.progressText}>
+                      {done.size}/{it.sets?.length ?? 0}
+                    </Text>
+                  </View>
+
+                  {(it.sets || []).map((set, i) => {
+                    const isDone = done.has(i);
+                    const isDisabled = !!data?.finishedAt;
+                    return (
+                      <Pressable
+                        key={i}
+                        onPress={() => !isDisabled && toggleSet(it.exerciseId, it.order, i)}
+                        style={s.setRow}
+                        disabled={isDisabled}
+                      >
+                        <Text style={{ color: isDone ? "#12E29A" : "#98A2B3" }}>
+                          {isDone ? "✓ " : "• "}
+                          Série {i + 1}: {set.reps} reps
+                          {typeof set.weight === "number" ? ` @${set.weight}kg` : ""}
+                          {typeof set.rest === "number" ? ` (repos ${set.rest}s)` : ""}
+                        </Text>
+                      </Pressable>
+                    );
+                  })}
+
+                  {/* Bouton "valider le prochain set" */}
+                  {(it.sets?.length ?? 0) > 0 && !data?.finishedAt && (
+                    <Pressable
+                      onPress={() => nextSet(it.exerciseId, it.order, it.sets!.length)}
+                      style={s.nextSetBtn}
+                    >
+                      <Text style={s.ctaText}>Valider le prochain set</Text>
+                    </Pressable>
+                  )}
+                </View>
+              );
+            })}
+          </View>
+        )}
+
+        {/* Formulaire d'ajout d'exercice */}
+        <View style={s.card}>
+          <Text style={s.sectionTitle}>+ Ajouter un exercice</Text>
+
+          <Text style={s.label}>exerciseId</Text>
+          <TextInput
+            value={exId}
+            onChangeText={setExId}
+            placeholder="ex: bench"
+            placeholderTextColor="#6B7280"
+            style={s.input}
+            autoCapitalize="none"
+            editable={!data?.finishedAt}
+          />
+
+          <Text style={s.label}>reps</Text>
+          <TextInput
+            value={reps}
+            onChangeText={setReps}
+            keyboardType="numeric"
+            placeholder="10"
+            placeholderTextColor="#6B7280"
+            style={s.input}
+            editable={!data?.finishedAt}
+          />
+
+          <Text style={s.label}>poids (kg, optionnel)</Text>
+          <TextInput
+            value={weight}
+            onChangeText={setWeight}
+            keyboardType="numeric"
+            placeholder="ex: 60"
+            placeholderTextColor="#6B7280"
+            style={s.input}
+            editable={!data?.finishedAt}
+          />
+
+          <Text style={s.label}>repos (sec, optionnel)</Text>
+          <TextInput
+            value={rest}
+            onChangeText={setRest}
+            keyboardType="numeric"
+            placeholder="ex: 90"
+            placeholderTextColor="#6B7280"
+            style={s.input}
+            editable={!data?.finishedAt}
+          />
+
+          <Pressable
+            style={[s.cta, (adding || !!data?.finishedAt) && { opacity: 0.6 }]}
+            onPress={onAddItem}
+            disabled={adding || !!data?.finishedAt}
+          >
+            <Text style={s.ctaText}>
+              {adding ? "Ajout…" : "Ajouter l'exercice"}
+            </Text>
+          </Pressable>
+
+          {!!data?.finishedAt && (
+            <Text style={s.disabledText}>
+              La séance est terminée — ajout désactivé.
+            </Text>
+          )}
+        </View>
+
+        {/* Bouton réinitialiser la progression */}
+        {Object.keys(doneSets).length > 0 && !data?.finishedAt && (
+          <Pressable
+            onPress={() => {
+              Alert.alert(
+                "Réinitialiser la progression",
+                "Es-tu sûr de vouloir réinitialiser toutes les séries validées ?",
+                [
+                  { text: "Annuler", style: "cancel" },
+                  { text: "Réinitialiser", onPress: () => setDoneSets({}), style: "destructive" }
+                ]
+              );
+            }}
+            style={[s.secondary, { marginBottom: 8 }]}
+          >
+            <Text style={[s.secondaryText, { color: "#EF4444" }]}>
+              Réinitialiser la progression
+            </Text>
+          </Pressable>
+        )}
+
+        {/* Bouton retour */}
         <Pressable style={s.secondary} onPress={() => router.back()}>
           <Text style={s.secondaryText}>Retour</Text>
         </Pressable>
@@ -112,18 +354,95 @@ export default function WorkoutDetailScreen() {
 
 const s = StyleSheet.create({
   container: { flex: 1, backgroundColor: "#0F1420", padding: 16 },
-  center: { flex: 1, justifyContent: "center", alignItems: "center", backgroundColor: "#0F1420" },
+  center: {
+    flex: 1,
+    justifyContent: "center",
+    alignItems: "center",
+    backgroundColor: "#0F1420",
+  },
 
   card: {
-    borderWidth: 1, borderColor: "#232A3A", backgroundColor: "#121927",
-    borderRadius: 16, padding: 16, marginBottom: 16,
+    borderWidth: 1,
+    borderColor: "#232A3A",
+    backgroundColor: "#121927",
+    borderRadius: 16,
+    padding: 16,
+    marginBottom: 16,
   },
   note: { color: "#98A2B3", marginBottom: 8 },
   status: { color: "#E6F0FF", fontWeight: "600" },
 
-  cta: { backgroundColor: "#12E29A", paddingVertical: 12, borderRadius: 12, alignItems: "center", marginBottom: 8 },
+  sectionTitle: {
+    color: "#E6F0FF",
+    fontWeight: "700",
+    marginBottom: 12,
+    fontSize: 16,
+  },
+
+  exerciseItem: { marginBottom: 16 },
+  exerciseHeader: {
+    flexDirection: "row",
+    justifyContent: "space-between",
+    alignItems: "center",
+    marginBottom: 8,
+  },
+  exerciseTitle: {
+    color: "#E6F0FF",
+    fontWeight: "600",
+    fontSize: 15,
+    flex: 1,
+  },
+  progressText: {
+    color: "#12E29A",
+    fontWeight: "700",
+    fontSize: 14,
+  },
+  setRow: { paddingVertical: 6 },
+
+  nextSetBtn: {
+    backgroundColor: "#12E29A",
+    alignSelf: "flex-start",
+    paddingHorizontal: 12,
+    paddingVertical: 8,
+    borderRadius: 8,
+    marginTop: 8,
+  },
+
+  cta: {
+    backgroundColor: "#12E29A",
+    paddingVertical: 12,
+    borderRadius: 12,
+    alignItems: "center",
+    marginBottom: 8,
+  },
   ctaText: { color: "#061018", fontWeight: "700" },
 
-  secondary: { paddingVertical: 12, borderRadius: 12, alignItems: "center" },
+  secondary: {
+    paddingVertical: 12,
+    borderRadius: 12,
+    alignItems: "center",
+  },
   secondaryText: { color: "#98A2B3", fontWeight: "600" },
+
+  label: {
+    color: "#12E29A",
+    fontWeight: "600",
+    marginTop: 12,
+    marginBottom: 4,
+  },
+  input: {
+    borderWidth: 1,
+    borderColor: "#232A3A",
+    backgroundColor: "#0F1420",
+    color: "#E6F0FF",
+    borderRadius: 12,
+    paddingHorizontal: 12,
+    paddingVertical: 10,
+  },
+
+  disabledText: {
+    color: "#98A2B3",
+    marginTop: 8,
+    fontSize: 13,
+  },
 });

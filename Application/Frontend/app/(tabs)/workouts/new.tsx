@@ -26,9 +26,15 @@ export default function NewWorkoutScreen() {
 
     try {
       setSaving(true); //Désactive l'UI, en évitant les double clics
-      await createWorkout({ title: trimmed }); // Appel a l'API POST /workouts
+      // ⬇️ On récupère l'objet créé (avec son id)
+      const w = await createWorkout({ title: trimmed });
+      if (!w || !w.id) {
+        Alert.alert("Erreur",  "Réponse inattenduedu serveur (création sans id)");
+        return;
+      }
+      setTitle(""); // Option: vider le champ
       Alert.alert("Entraînement créé ✅", `Nom : "${trimmed}"`, [ //Feedback utilisateur (succès)
-        { text: "OK", onPress: () => router.replace("/workouts") }, //Puis on redirige ver l'autre écran
+        { text: "OK", onPress: () => router.replace(`/workouts/${w.id}`) }, //Puis on redirige ver l'autre écran
       ]);
     } catch (e: any) {
       Alert.alert("Erreur", e?.message || "Impossible de créer la séance."); //Gére erreur si jamais problèeme lors du back
