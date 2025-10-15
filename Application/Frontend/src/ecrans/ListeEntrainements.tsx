@@ -22,7 +22,7 @@ export default function ListeEntrainements({ navigation }: any) {
     setLoading(true);
     try {
       const res = await listWorkouts();
-      setData(res.items || []);
+      setData(res?.items ?? []); // protège si TS croit que res peut être null
     } catch (e) {
       Alert.alert("Erreur", "Impossible de charger les entraînements.");
     } finally {
@@ -46,6 +46,8 @@ export default function ListeEntrainements({ navigation }: any) {
   async function onDebug() {
     try {
       const health = await http<{ ok: boolean; service: string }>("/health");
+      if (!health) throw new Error("Réponse /health vide"); // évite 'health peut être null'
+
       const liste = await listWorkouts();
       let detail: any = null;
       if (liste?.items?.length) {

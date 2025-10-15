@@ -12,11 +12,7 @@ import {
 } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
 import { Stack, useLocalSearchParams, useFocusEffect, useRouter } from "expo-router";
-<<<<<<< HEAD:Application/Frontend/app/(tabs)/workouts/[id].tsx
-import { getWorkout, finishWorkout, type Workout } from "../../../src/lib/workouts";
-=======
-import { getWorkout, finishWorkout, type Workout, addWorkoutItem } from "../../src/lib/workouts";
->>>>>>> Dev-Shel:Application/Frontend/app/workouts/[id].tsx
+import { getWorkout, finishWorkout, type Workout, addWorkoutItem } from "../../../src/lib/workouts";
 
 export default function WorkoutDetailScreen() {
   const { id } = useLocalSearchParams<{ id: string }>();
