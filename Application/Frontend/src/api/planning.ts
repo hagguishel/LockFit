@@ -1,27 +1,54 @@
 import { http } from "@/api/http";
-import type { Planning } from "@/types/planning";
+
+export type PlanningJour = {
+  id: string;
+  date: string;
+  note?: string | null;
+  planningId: string;
+  workoutId: string;
+  status: "PLANNED" | "DONE";
+  doneAt?: string | null;
+  workout?: {
+    id: string;
+    title: string;
+    note?: string | null; finisheAt?:
+    string | null;
+    createAt: string;
+    updateAt: string;
+  };
+}
+
+export type Planning = {
+  id: string;
+  nom: string;
+  debut: string;
+  fin: string;
+  createAt: string;
+  updatedAt: string;
+  jours?: PlanningJour[];
+};
 
 /**
  * Liste tous les plannings
  * CORRECTION: listPlanning → listPlannings (pluriel pour cohérence)
  */
 export const listPlannings = () =>
-  http<Planning[]>("/plannings");
+  http<{ items: Planning[]; total: number }>("/plannings");
 
 /**
  * Récupère un planning spécifique par son ID
  */
 export const getPlanning = (id: string) =>
-  http<Planning>(`/planning/${id}`);
+  http<Planning>(`/plannings/${id}`);
 
 /**
  * Crée un nouveau planning
  */
 export const createPlanning = (payload: {
-  title: string;
-  rangeStart: string; // Format: YYYY-MM-DD
-  rangeEnd: string;   // Format: YYYY-MM-DD
-}) => http<Planning>("/planning", {
+  nom: string;
+  debut: string; // Format: YYYY-MM-DD
+  fin: string;   // Format: YYYY-MM-DD
+}) => http<Planning>("/plannings", {
   method: "POST",
   body: payload
 });
@@ -30,19 +57,19 @@ export const createPlanning = (payload: {
  * Met à jour un planning existant
  */
 export const updatePlanning = (id: string, payload: Partial<{
-  title: string;
-  rangeStart: string;
-  rangeEnd: string;
-}>) => http<Planning>(`/planning/${id}`, {
+  nom: string;
+  debut: string;
+  fin: string;
+}>) => http<Planning>(`/plannings/${id}`, {
   method: "PATCH",
-  body: payload
+  body: payload,
 });
 
 /**
  * Supprime un planning
  */
 export const deletePlanning = (id: string) =>
-  http<void>(`/planning/${id}`, { method: "DELETE" });
+  http<void>(`/plannings/${id}`, { method: "DELETE" });
 
 /**
  * Ajoute ou met à jour un item dans un planning (workout assigné à une date)
@@ -51,7 +78,7 @@ export const upsertPlanningItem = (planningId: string, payload: {
   date: string;       // Format: YYYY-MM-DD
   workoutId: string;
   note?: string;
-}) => http<Planning>(`/planning/${planningId}/items`, {
+}) => http<Planning>(`/plannings/${planningId}/items`, {
   method: "POST",
   body: payload
 });
@@ -61,6 +88,6 @@ export const upsertPlanningItem = (planningId: string, payload: {
  * CORRECTION: URL était /plannings/${id} au lieu de /planning/${id}
  */
 export const removePlanningItem = (planningId: string, itemId: string) =>
-  http<Planning>(`/planning/${planningId}/items/${itemId}`, {
+  http<Planning>(`/plannings/${planningId}/items/${itemId}`, {
     method: "DELETE"
   });
