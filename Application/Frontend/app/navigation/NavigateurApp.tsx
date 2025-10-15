@@ -3,10 +3,10 @@ import { Button } from "react-native";
 import { NavigationContainer } from "@react-navigation/native";
 import { createNativeStackNavigator } from "@react-navigation/native-stack";
 
-import ListeEntrainements from "@/ecrans/ListeEntrainements";
-import FormulaireEntrainement from "@/ecrans/FormulaireEntrainement";
-import DetailsEntrainement from "@/ecrans/DetailsEntrainement";
-import EntrainementLive from "@/ecrans/EntrainementLive";
+import ListeEntrainements from "app/ecrans/ListeEntrainements";
+import FormulaireEntrainement from "app/ecrans/FormulaireEntrainement";
+import DetailsEntrainement from "app/ecrans/DetailsEntrainement";
+import EntrainementLive from "app/ecrans/EntrainementLive";
 
 export type RootStackParamList = {
   Liste: undefined;

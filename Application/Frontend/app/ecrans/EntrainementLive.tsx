@@ -1,7 +1,7 @@
 import React, { useEffect, useState } from "react";
 import { View, Text, ActivityIndicator, Button, Alert, TouchableOpacity } from "react-native";
 import type { NativeStackScreenProps } from "@react-navigation/native-stack";
-import type { RootStackParamList } from "@/navigation/NavigateurApp";
+import type { RootStackParamList } from "app/navigation/NavigateurApp";
 import { getWorkout, finishWorkout, type Workout } from "@/api/workouts";
 
 // ✅ CORRECTION 1 : Nom de route corrigé (sans accent)

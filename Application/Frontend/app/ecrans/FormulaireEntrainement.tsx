@@ -1,7 +1,7 @@
 import React, { useState } from "react";
 import { View, Text, TextInput, Button, Alert, FlatList, TouchableOpacity } from "react-native";
 import type { NativeStackScreenProps } from "@react-navigation/native-stack";
-import type { RootStackParamList } from "@/navigation/NavigateurApp";
+import type { RootStackParamList } from "app/navigation/NavigateurApp";
 import { createWorkout } from "@/api/workouts";
 
 type Props = NativeStackScreenProps<RootStackParamList, "Nouveau">;

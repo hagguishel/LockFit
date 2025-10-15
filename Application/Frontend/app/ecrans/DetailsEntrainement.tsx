@@ -1,7 +1,7 @@
 import React, { useEffect, useState, useCallback } from "react";
 import { View, Text, ActivityIndicator, TextInput, Button, Alert, FlatList } from "react-native";
 import type { NativeStackScreenProps } from "@react-navigation/native-stack";
-import type { RootStackParamList } from "@/navigation/NavigateurApp";
+import type { RootStackParamList } from "app/navigation/NavigateurApp";
 // ✅ CORRECTION 1 : Import sans WorkoutItem (on va le définir localement)
 import { getWorkout, addWorkoutItem } from "@/api/workouts";
 import type { Workout, WorkoutItem } from "@/types/workout";
