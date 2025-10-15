@@ -2,7 +2,7 @@
 
 import { Injectable, NotFoundException, BadRequestException} from '@nestjs/common';
 import { PrismaService } from '../prisma/prisma.service';
-import { CreateWorkoutDto } from './dto/create-workout.dto';
+import { CreateWorkoutDto, CreateWorkoutItemDto, CreateWorkoutSetDto } from './dto/create-workout.dto';
 import { UpdateWorkoutDto } from './dto/update-workout.dto';
 
 @Injectable() //Cette classe devient injectable
@@ -23,7 +23,22 @@ export class WorkoutsService {
                 note: dto.note,
                 finishedAt: this.toDateOrThrow(dto.finishedAt),
                 // id, created at et update at sont remplis automatiquement par Prisma
+                items : {
+                  create: dto.items.map((i) => ({
+                    order: i.order,
+                    exercise: { connect: { id: i.exerciseId } },
+                    sets: {
+                      create: i.sets.map((s) => ({
+                        reps: s.reps,
+                        weight: s.weight,
+                        rest: s.rest,
+                        rpe: s.rpe,
+                      })),
+                    },
+                  })),
+                },
             },
+            include: { items: { include: { sets: true, exercise: true } } },
         });
     }
 
@@ -37,12 +52,16 @@ export class WorkoutsService {
         const items = await this.prisma.workout.findMany({
             where,
             orderBy: { createdAt: 'desc' },
+            include: { items: { include: { sets: true, exercise: true } } },
         });                           //On liste toutes les séances
         return { items, total: items.length };
     }
 
     async findOne(id: string) {
-        const w = await this.prisma.workout.findUnique({ where: { id } }); //chercher par id dans la base de données
+        const w = await this.prisma.workout.findUnique({
+        where: { id },
+        include: { items: { include: { sets: true, exercise:true } } } },
+      ); //chercher par id dans la base de données
         if (!w) throw new NotFoundException('Entraînement introuvable');
         return w
     }

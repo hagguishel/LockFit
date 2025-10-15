@@ -1,7 +1,5 @@
-version: "3.9"
-
+# docker-compose.yml (tests locaux)
 services:
-  # === DB locale (active-la seulement si tu veux bosser sans DB partagée) ===
   db:
     image: postgres:16
     container_name: lockfit_db
@@ -15,8 +13,12 @@ services:
     volumes:
       - pgdata:/var/lib/postgresql/data
     profiles: ["local-db"]
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U lockfit -d lockfit || exit 1"]
+      interval: 3s
+      timeout: 3s
+      retries: 20
 
-  # (Optionnel) UI web pour la DB locale
   pgadmin:
     image: dpage/pgadmin4:8
     container_name: lockfit_pgadmin
@@ -30,7 +32,6 @@ services:
       - db
     profiles: ["local-db"]
 
-  # === Backend NestJS (dev) ===
   backend:
     image: node:20
     container_name: lockfit_backend
@@ -42,14 +43,21 @@ services:
       - ./Backend/.env.docker
     environment:
       PORT: "3001"
-      CHOKIDAR_USEPOLLING: "true"   # watch fiable dans un conteneur
+      NODE_ENV: development
+      TZ: Europe/Paris
+      # On injecte la bonne URL côté config…
+      DATABASE_URL: "postgresql://lockfit:lockfit@db:5432/lockfit?schema=public"
+    depends_on:
+      db:
+        condition: service_healthy
     command: >
-      sh -lc "npm ci || npm i
-      && npx prisma generate || true
-      && npm run start:dev"
+      sh -lc 'export DATABASE_URL="postgresql://lockfit:lockfit@db:5432/lockfit?schema=public"
+      && (npm ci || npm i)
+      && (npx prisma generate || true)
+      && npx prisma migrate deploy
+      && npm run start:dev'
     ports:
       - "3001:3001"
-    # ⚠️ Pas de depends_on:db ici pour rester compatible avec une DB partagée (Neon/Supabase)
 
 volumes:
   pgdata:

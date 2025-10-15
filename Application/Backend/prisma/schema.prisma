@@ -16,8 +16,9 @@ model Workout {
   note       String?
   finishedAt DateTime?
 
-  createdAt DateTime @default(now())
-  updatedAt DateTime @updatedAt // auto-mis à jour par Prisma
+  createdAt DateTime      @default(now())
+  updatedAt DateTime      @updatedAt // auto-mis à jour par Prisma
+  items     WorkoutItem[]
 
   // back-relation vers PlanningJour
   PlanningJour PlanningJour[]
@@ -60,6 +61,80 @@ model PlanningJour {
   @@unique([planningId, date, workoutId])
   // index pour requetes rapides par jour
   @@index([planningId, date])
+}
+
+model Utilisateur {
+  id             String    @id @default(cuid())
+  email          String    @unique
+  password       String
+  firstName      String
+  lastName       String
+  mfaEnabled     Boolean   @default(false)
+  mfaSecret      String?
+  createdAt      DateTime @default(now())
+  updatedAt      DateTime @updatedAt 
+
+  refreshTokens  RefreshToken[]
+}
+
+model RefreshToken {
+  id              String        @id @default(cuid())
+  utilisateurId   String
+  tokenHash       String
+  revoked         Boolean       @default(false)
+  createdAt       DateTime      @default(now())
+  revokedAt       DateTime?
+
+  utilisateur     Utilisateur   @relation(fields : [utilisateurId], references:  [id])
+
+  @@index([utilisateurId, revoked])
+  @@map("refresh_tokens")
+}
+model Exercise {
+  id              String   @id @default(cuid())
+  slug            String   @unique // eg. "bench"
+  name            String
+  primaryMuscle   String
+  secondaryMuscle String?
+  equipment       String?
+  level           String?
+  instructions    String?
+  mediaUrl        String?
+  source          String? // "ExerciseDB" | "wger" | "manual"
+  createdAt       DateTime @default(now())
+  updatedAt       DateTime @updatedAt
+
+  items WorkoutItem[]
+
+  @@index([primaryMuscle])
+  @@index([equipment])
+}
+
+model WorkoutItem {
+  id         String @id @default(cuid())
+  order      Int
+  workoutId  String
+  exerciseId String
+
+  workout  Workout      @relation(fields: [workoutId], references: [id], onDelete: Cascade)
+  exercise Exercise     @relation(fields: [exerciseId], references: [id], onDelete: Restrict)
+  sets     WorkoutSet[]
+
+  @@unique([workoutId, order]) // pas deux items au même ordre dans une séance
+  @@index([exerciseId])
+}
+
+model WorkoutSet {
+  id     String @id @default(cuid())
+  reps   Int
+  weight Float?
+  rest   Int?
+  rpe    Float?
+
+  workoutItemId String
+  item          WorkoutItem @relation(fields: [workoutItemId], references: [id], onDelete: Cascade)
+
+  @@index([workoutItemId])
 }
 
 model Utilisateur {
