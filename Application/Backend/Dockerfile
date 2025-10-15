@@ -1,8 +1,8 @@
-# ---- Étape build (dev deps incluses pour prisma) ----
+# ---- Étape build (dev deps incluses pour prisma + TypeScript) ----
 FROM node:20-alpine AS build
 WORKDIR /app
 
-# 1) Dépendances
+# 1) Dépendances (toutes, y compris dev)
 COPY package*.json ./
 RUN npm ci
 
@@ -15,25 +15,40 @@ COPY prisma ./prisma
 RUN npx prisma generate
 RUN npm run build
 
-# ---- Étape runtime ----
+# 4) Nettoyer node_modules et réinstaller SEULEMENT prod
+RUN rm -rf node_modules && npm ci --omit=dev
+
+# ---- Étape runtime (légère) ----
 FROM node:20-alpine
 WORKDIR /app
 
-# Outils légers utilisés (healthcheck)
+# Outils légers (healthcheck, debugging)
 RUN apk add --no-cache curl
 
-# 1) Dépendances (inclure dev pour prisma CLI en dev/containers)
+# 1) Package files
 COPY package*.json ./
-RUN npm ci
 
-# 2) Artefacts & schémas
+# 2) node_modules prod-only depuis le build
+COPY --from=build /app/node_modules ./node_modules
+
+# 3) Artefacts compilés
 COPY --from=build /app/dist ./dist
+
+# 4) Schémas Prisma (nécessaires pour le client)
 COPY --from=build /app/prisma ./prisma
 
-# 3) Entrypoint (migrate, puis start)
+# 5) Prisma Client généré
+COPY --from=build /app/node_modules/.prisma ./node_modules/.prisma
+COPY --from=build /app/node_modules/@prisma ./node_modules/@prisma
+
+# 6) Entrypoint
 COPY docker-entrypoint.sh ./docker-entrypoint.sh
 RUN chmod +x ./docker-entrypoint.sh
 
 ENV NODE_ENV=production
 EXPOSE 3000
+
+HEALTHCHECK --interval=30s --timeout=3s --start-period=40s \
+  CMD curl -f http://localhost:3000/api/v1/health || exit 1
+
 CMD ["./docker-entrypoint.sh"]

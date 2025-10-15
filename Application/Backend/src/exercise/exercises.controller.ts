@@ -2,7 +2,7 @@ import { Controller, Get,  Param, Query } from "@nestjs/common";
 import { ExerciseService } from "./exercises.service";
 import { QueryExerciseDto } from "./dto/query-exercise.dto";
 
-@Controller("api/v1/exercises")
+@Controller("exercises")
 export class ExerciseController {
   constructor(private service: ExerciseService) {}
 

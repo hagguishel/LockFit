@@ -77,8 +77,14 @@ export async function http<T = unknown>(
 
   // 🚫 Pas de body pour GET
   if (body !== undefined && body !== null && method !== "GET") {
-    init.body = JSON.stringify(body);
-  }
+  // 🔧 Correction: ne JSON.stringify que si c'est un objet.
+  // Si c'est déjà une string (ou FormData/Blob), on n'y touche pas.
+  init.body =
+    typeof body === "string" || body instanceof FormData || body instanceof Blob
+      ? body
+      : JSON.stringify(body);
+}
+
 
   // ⏱️ Timeout + annulation
   const controller = !externalSignal ? new AbortController() : null;

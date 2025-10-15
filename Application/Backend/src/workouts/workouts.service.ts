@@ -1,97 +1,170 @@
-//Fichier couche métier, qui parle à la base de données via Prisma. Ce fichier sert juste a executé l'action demandée, il ne gère pas les validations
-
-import { Injectable, NotFoundException, BadRequestException} from '@nestjs/common';
+import {
+  Injectable,
+  NotFoundException,
+  BadRequestException
+} from '@nestjs/common';
 import { PrismaService } from '../prisma/prisma.service';
-import { CreateWorkoutDto, CreateWorkoutItemDto, CreateWorkoutSetDto } from './dto/create-workout.dto';
+import { CreateWorkoutDto } from './dto/create-workout.dto';
 import { UpdateWorkoutDto } from './dto/update-workout.dto';
 
-@Injectable() //Cette classe devient injectable
+@Injectable()
 export class WorkoutsService {
-    constructor (private readonly prisma: PrismaService) {}
+  constructor(private readonly prisma: PrismaService) {}
 
-    private toDateOrThrow(v?: string) { //Converti une String en Date (sinon 404)
-        if (v === undefined) return undefined;
-        const d = new Date(v);
-        if (isNaN(d.getTime())) throw new BadRequestException('La date doit être au format ISO (ex : 2025-09-30T10:00:00Z)')
-        return d;
+  // Helper : convertit string ISO en Date ou lance une erreur
+  private toDateOrThrow(v?: string): Date | undefined {
+    if (v === undefined) return undefined;
+    const d = new Date(v);
+    if (isNaN(d.getTime())) {
+      throw new BadRequestException(
+        'La date doit être au format ISO (ex: 2025-01-15T10:00:00Z)'
+      );
+    }
+    return d;
+  }
+
+  // Include standard pour toutes les requêtes
+  private readonly includeRelations = {
+    items: {
+      include: {
+        sets: true,
+        exercise: true,
+      },
+      orderBy: { order: 'asc' as const },
+    },
+  };
+
+  /**
+   * Créer un workout avec items et sets
+   */
+  async create(dto: CreateWorkoutDto) {
+    // Vérifier que tous les exercices existent AVANT de créer
+    const exerciseIds = dto.items.map(i => i.exerciseId);
+    const uniqueIds = [...new Set(exerciseIds)];
+
+    const exercises = await this.prisma.exercise.findMany({
+      where: { id: { in: uniqueIds } },
+      select: { id: true },
+    });
+
+    if (exercises.length !== uniqueIds.length) {
+      const foundIds = exercises.map(e => e.id);
+      const missing = uniqueIds.filter(id => !foundIds.includes(id));
+      throw new BadRequestException(
+        `Exercice(s) introuvable(s): ${missing.join(', ')}`
+      );
     }
 
-    async create(dto: CreateWorkoutDto) {        // Ici, on créer une ligne dans la table Workout
-        return this.prisma.workout.create({      //Correspond au modele Workout definit dans schema.prisma
-            data: {                              //avec create, prisma commence a insérer en base
-                title: dto.title,
-                note: dto.note,
-                finishedAt: this.toDateOrThrow(dto.finishedAt),
-                // id, created at et update at sont remplis automatiquement par Prisma
-                items : {
-                  create: dto.items.map((i) => ({
-                    order: i.order,
-                    exercise: { connect: { id: i.exerciseId } },
-                    sets: {
-                      create: i.sets.map((s) => ({
-                        reps: s.reps,
-                        weight: s.weight,
-                        rest: s.rest,
-                        rpe: s.rpe,
-                      })),
-                    },
-                  })),
-                },
+    // Création
+    return this.prisma.workout.create({
+      data: {
+        title: dto.title,
+        note: dto.note,
+        finishedAt: this.toDateOrThrow(dto.finishedAt),
+        items: {
+          create: dto.items.map((item) => ({
+            order: item.order,
+            exercise: { connect: { id: item.exerciseId } },
+            sets: {
+              create: item.sets.map((set) => ({
+                reps: set.reps,
+                weight: set.weight,
+                rest: set.rest,
+                rpe: set.rpe,
+              })),
             },
-            include: { items: { include: { sets: true, exercise: true } } },
-        });
+          })),
+        },
+      },
+      include: this.includeRelations,
+    });
+  }
+
+  /**
+   * Lister tous les workouts avec filtres temporels
+   */
+  async findAll(params?: { from?: string; to?: string; finished?: boolean }) {
+    const where: any = {};
+
+    // Filtre par date de création
+    if (params?.from || params?.to) {
+      where.createdAt = {};
+      if (params.from) where.createdAt.gte = this.toDateOrThrow(params.from);
+      if (params.to) where.createdAt.lte = this.toDateOrThrow(params.to);
     }
 
-    async findAll(params?: { from?: string; to?: string}) {
-        const where: any = {};
-        if (params?.from || params?.to) {
-            where.createdAt = {};
-            if (params.from) where.createdAt.gte = this.toDateOrThrow(params.from);
-            if (params.to) where.createdAt.lte = this.toDateOrThrow(params.to);
-        }
-        const items = await this.prisma.workout.findMany({
-            where,
-            orderBy: { createdAt: 'desc' },
-            include: { items: { include: { sets: true, exercise: true } } },
-        });                           //On liste toutes les séances
-        return { items, total: items.length };
+    // Filtre par statut terminé/en cours
+    if (params?.finished !== undefined) {
+      where.finishedAt = params.finished
+        ? { not: null }  // Terminés
+        : null;          // En cours
     }
 
-    async findOne(id: string) {
-        const w = await this.prisma.workout.findUnique({
-        where: { id },
-        include: { items: { include: { sets: true, exercise:true } } } },
-      ); //chercher par id dans la base de données
-        if (!w) throw new NotFoundException('Entraînement introuvable');
-        return w
+    const items = await this.prisma.workout.findMany({
+      where,
+      orderBy: { createdAt: 'desc' },
+      include: this.includeRelations,
+    });
+
+    return { items, total: items.length };
+  }
+
+  /**
+   * Récupérer un workout par ID
+   */
+  async findOne(id: string) {
+    const workout = await this.prisma.workout.findUnique({
+      where: { id },
+      include: this.includeRelations,
+    });
+
+    if (!workout) {
+      throw new NotFoundException(`Entraînement "${id}" introuvable`);
     }
 
-    async update(id: string, dto: UpdateWorkoutDto) { //update un entraineùent, tous les champs peuvent ne pas être tous modifiés
-        await this.findOne(id);
-        return this.prisma.workout.update({
-            where: { id },
-            data: {
-                ...(dto.title !== undefined ? { title: dto.title } : {}), //Ici, on change la date suivant la date de l'update
-                ...(dto.note !== undefined ? { note: dto.note } :  {}),
-                ...(dto.finishedAt !== undefined
-                    ? { finishedAt: this.toDateOrThrow(dto.finishedAt) }
-                    : {}),
-            },
-        });
+    return workout;
+  }
+
+  /**
+   * Mettre à jour un workout (sans toucher aux items/sets)
+   */
+  async update(id: string, dto: UpdateWorkoutDto) {
+    // Vérifier existence
+    await this.findOne(id);
+
+    // Construire l'objet data dynamiquement
+    const data: any = {};
+    if (dto.title !== undefined) data.title = dto.title;
+    if (dto.note !== undefined) data.note = dto.note;
+    if (dto.finishedAt !== undefined) {
+      data.finishedAt = this.toDateOrThrow(dto.finishedAt);
     }
 
-    async remove(id: string) {      //fonction asynchrone qui permet de supprimer un entrainement
-        await this.findOne(id);
-        await this.prisma.workout.delete({ where: { id } });
-        return { ok: true, id};
-    }
+    return this.prisma.workout.update({
+      where: { id },
+      data,
+      include: this.includeRelations, // ✅ CORRIGÉ
+    });
+  }
 
-    async finish(id: string) {      //fonction qui marque un entrainement comme terminé
-        await this.findOne(id);
-        return this.prisma.workout.update({
-            where: { id },
-            data: {
-                finishedAt: new Date() }
-        });
-    }
+  /**
+   * Supprimer un workout (cascade delete sur items/sets)
+   */
+  async remove(id: string) {
+    await this.findOne(id);
+    await this.prisma.workout.delete({ where: { id } });
+    return { ok: true, id };
+  }
+
+  /**
+   * Marquer un workout comme terminé
+   */
+  async finish(id: string) {
+    await this.findOne(id);
+    return this.prisma.workout.update({
+      where: { id },
+      data: { finishedAt: new Date() },
+      include: this.includeRelations, // ✅ CORRIGÉ
+    });
+  }
 }
