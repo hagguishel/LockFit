@@ -16,7 +16,7 @@ export type PlanningJour = {
     createdAt: string;
     updatedAt: string;
   };
-}
+};
 
 export type Planning = {
   id: string;
