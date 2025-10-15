@@ -15,6 +15,7 @@ export type CreateWorkoutInput = { //Ce que renvoie POST /workouts
     items?: WorkoutItem[];
 };
 
+
 export async function listWorkouts(params?: { from?: string; to?: string }): Promise<ListResponse> {
   //params peut contenir "from" et/ou "to". Coté back Nest, ca arrive sur findAll (from et to pour lister)
   const qs = new URLSearchParams();                                         //créer un constructeur de query string
