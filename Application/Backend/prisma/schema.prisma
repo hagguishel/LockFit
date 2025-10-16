@@ -80,6 +80,8 @@ model RefreshToken {
   id              String        @id @default(cuid())
   utilisateurId   String
   tokenHash       String
+  jti             String        @unique         //Jeton d'identifiant unique du token 
+  expiresAt       DateTime                      //Date d'expiration du token
   revoked         Boolean       @default(false)
   createdAt       DateTime      @default(now())
   revokedAt       DateTime?
@@ -87,6 +89,7 @@ model RefreshToken {
   utilisateur     Utilisateur   @relation(fields: [utilisateurId], references: [id])
 
   @@index([utilisateurId, revoked])
+  @@index([expiresAt])
   @@map("refresh_tokens")
 }
 

@@ -93,17 +93,21 @@ export class AuthService {
         // 2) REFRESH TOKEN (durée longue) + identifiant unique
         const tokenId = randomUUID();
         const refreshToken = await this.jwt.signAsync(
-            { sub: utilisateur.id, tokenId },
+            { sub: utilisateur.id, jti: tokenId },
             {
                 secret: process.env.JWT_REFRESH_SECRET,
                 expiresIn: parseTTL(REFRESH_TTL),
             },
         );
 
-        // 3) Stocker uniquement le hash du refresh (jamais en clair)
+        // 3) Calculer la date d'expiration pour utiliser expiresAt
+        const expiresInSeconds = parseTTL(REFRESH_TTL);
+        const expiresAt = new Date(Date.now() + expiresInSeconds * 1000); //Transforme en millisecondes car JS travaille en millisecondes
+
+        // 4) Stocker uniquement le hash du refresh (jamais en clair)
         const tokenHash = await argon2.hash(refreshToken);
         await this.prisma.refreshToken.create({
-            data: { utilisateurId: utilisateur.id, tokenHash },
+            data: { utilisateurId: utilisateur.id, tokenHash, jti: tokenId, expiresAt },
         });
 
         return { accessToken, refreshToken };
@@ -259,7 +263,9 @@ export class AuthService {
         const storedToken = await this.prisma.refreshToken.findFirst({
             where: { 
                 utilisateurId: userId,
-                revoked: false
+                revoked: false,
+                jti: tokenId,
+                expiresAt: { gt: new Date() }
             }
         });
 
@@ -302,26 +308,41 @@ export class AuthService {
     }
 
     async logout(userId: string, authzHeader: string) {
-        const refreshToken = FromAuthz(authzHeader);
-        
-        // Trouver et révoquer le refresh token
-        const storedToken = await this.prisma.refreshToken.findFirst({
-            where: { 
-                utilisateurId: userId,
-                revoked: false
-            }
-        });
-
-        if (storedToken) {
-            const isValid = await argon2.verify(storedToken.tokenHash, refreshToken);
-            if (isValid) {
-                await this.prisma.refreshToken.update({
-                    where: { id: storedToken.id },
-                    data: { revoked: true }
-                });
-            }
+        // 1) Récupère le token brut depuis "Authorization: Bearer <token>"
+        const rawRefreshToken = FromAuthz(authzHeader);
+        if(!rawRefreshToken) {
+            return { message: 'Deconnexion réussie'};
         }
 
+        try {
+            // 2) Décode/valide le JWT pour récupérer le jti (ID unique du token) et le sub (userId)
+            const payload = this.jwt.verify(rawRefreshToken, {
+                secret: process.env.JWT_REFRESH_SECRET,
+            }) as { jti: string; sub: string};
+
+            // 3) Révoque par jti
+            await this.prisma.refreshToken.updateMany({
+                where: { jti: payload.jti, utilisateurId: payload.sub, revoked: false }, //on cherche les tokens encore actifs
+                data: { revoked: true, revokedAt: new Date() }, // et on les revoque
+            });
+        } catch {
+            //Si le token est invalide ou expiré, on retrouve l'entrée via le hash stocké et on révoque (au cas ou)
+            const candidate = await this.prisma.refreshToken.findFirst({
+                where: { utilisateurId: userId, revoked: false },
+                orderBy: { createdAt: 'desc' }, // le plus récent d'abord (optionnel)
+                });
+
+            if (candidate) {
+                const isValid = await argon2.verify(candidate.tokenHash, rawRefreshToken);
+                if (isValid) {
+                    await this.prisma.refreshToken.update({
+                        where: { id: candidate.id },
+                        data: { revoked: true, revokedAt: new Date() },
+                    });
+                }
+            }
+        }
+        
         return { message: 'Déconnexion réussie' };
     }
 }
