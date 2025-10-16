@@ -12,6 +12,10 @@ import { login } from "@/api/auth";
 import { isMfaRequired } from "@/types/auth";
 import { saveTokens } from "@/lib/tokenStorage";
 
+// ⛳ Mode mock pour tests visuels (met à false quand tu branches le vrai backend)
+const MOCK_AUTH = true;
+
+
 export default function LoginRoute() {
   const router = useRouter();
 
@@ -27,6 +31,15 @@ export default function LoginRoute() {
     return;
   setLoading(true);
   try {
+    if (MOCK_AUTH) {
+      // 🔌 Bypass complet : on simule un délai puis on ouvre les onglets
+      await new Promise((r) => setTimeout(r, 400));
+       // (option) tu peux sauvegarder des tokens factices si tu veux tester les gardes plus tard
+      // await saveTokens({ access: "fake", refresh: "fake" });
+      router.replace("/(tabs)");
+      return;
+    }
+    // ======= flux réel (à réactiver quand tu branches le backend) ======
     const res = await login(email, password);
 
     // Cas 1 : MFA requis → on passe le tempSessionId à l’écran MFA
@@ -134,6 +147,14 @@ export default function LoginRoute() {
         <TouchableOpacity style={styles.center} onPress={() => { /* à brancher plus tard */ }}>
           <Text style={styles.linkGreen}>Mot de passe oublié ?</Text>
         </TouchableOpacity>
+
+        {/* Test MFA (optionnel pour valider la navigation MFA) */}
+        <TouchableOpacity
+          style={[styles.outlineBtn, {marginTop: 8 }]}
+          onPress={() => router.push({ pathname: "/auth/mfa", params: {sid: "demo-sid-123456" } })}
+          >
+            <Text style={styles.outlineBtnText}>Tester MFA</Text>
+          </TouchableOpacity>
 
         {/* Créer un compte */}
         <TouchableOpacity style={styles.outlineBtn} onPress={() => { /* router.push("/auth/creation") */ }}>
