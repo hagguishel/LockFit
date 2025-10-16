@@ -131,12 +131,13 @@ export default function WorkoutDetailScreen() {
         weight: wkg,
         rest: rs,
       });
-
+      console.log(updated.items)
       // Si le back ne renvoie pas les items complets, on refetch
       if (!updated?.items || !Array.isArray(updated.items)) {
         await load();
       } else {
         setData(updated);
+        console.log(data);
       }
 
       // Reset du formulaire
@@ -199,7 +200,7 @@ export default function WorkoutDetailScreen() {
         )}
 
         {/* Liste des exercices */}
-        {hasItems && (
+
           <View style={s.card}>
             <Text style={s.sectionTitle}>Exercices</Text>
 
@@ -251,7 +252,7 @@ export default function WorkoutDetailScreen() {
               );
             })}
           </View>
-        )}
+
 
         {/* Formulaire d'ajout d'exercice */}
         <View style={s.card}>
