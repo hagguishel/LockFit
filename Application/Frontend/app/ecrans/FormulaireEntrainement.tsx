@@ -45,12 +45,13 @@ export default function FormulaireEntrainement({ navigation }: Props) {
 
   // ✅ CORRECTION 1 : Fonction pour convertir TmpItem en format API
   function convertItemsForApi() {
-    return items.map(item => ({
-      exerciseId: item.exerciseId,
+    return items.map((item, idx) => ({
+      exerciseId: item.exerciseId.trim(),
+      order: idx + 1,
       sets: item.sets.map(s => ({
         reps: parseInt(s.reps) || 0,
         weight: s.weight ? parseFloat(s.weight) : undefined,
-        restSec: parseInt(s.restSec) || 0,
+        rest: parseInt(s.restSec) || 0,
       }))
     }));
   }

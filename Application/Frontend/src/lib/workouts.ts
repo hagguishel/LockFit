@@ -91,7 +91,6 @@ export type NewWorkoutItemInput = {
 export async function addWorkoutItem(workoutId :string, input: NewWorkoutItemInput) {
   //1) charger la sceance actuelle
   const w = await getWorkout(workoutId);
-
   //2) fabriquer l'item a partir de l'input
   const nextOrder = (w.items?.length ?? 0) + 1;
   const newItem: WorkoutItem = {
@@ -99,12 +98,11 @@ export async function addWorkoutItem(workoutId :string, input: NewWorkoutItemInp
     order: nextOrder,
     sets: [{ reps: input.reps, weight: input.weight, rest: input.rest } satisfies WorkoutSet],
   };
-
   //3) constuire le nouveau tableau items
   const items = [...(w?.items ?? []), newItem];
-
+  console.log(items);
   //4) PATCH /workouts/:id (http.ts)
-  await updateWorkout(workoutId, { items });
-
+  const test = await updateWorkout(workoutId, { items });
+  console.log(test)
   return getWorkout(workoutId);
 }

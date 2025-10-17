@@ -1,0 +1,122 @@
+.
+├── Backend
+│   ├── 11.6.2
+│   ├── Dockerfile
+│   ├── docker-entrypoint.sh
+│   ├── lockfit-api@1.0.0
+│   ├── package-lock.json
+│   ├── package.json
+│   ├── prisma
+│   │   ├── migrations
+│   │   │   ├── 20250919122812_init
+│   │   │   ├── 20250924144851_add_finished_at
+│   │   │   ├── 20251001085811_add_planning
+│   │   │   ├── 20251003134752_planning_jour_status_done_at
+│   │   │   ├── 20251007121635_add_user_mfa
+│   │   │   ├── 20251009123241_add_exercises_items_sets
+│   │   │   ├── 20251010082928_remove_tempo_from_workoutset
+│   │   │   ├── 20251011104656_add_refresh_token
+│   │   │   ├── 20251011114639_add_refresh_tokens
+│   │   │   └── migration_lock.toml
+│   │   └── schema.prisma
+│   ├── scripts
+│   │   └── test_plannings.sh
+│   ├── src
+│   │   ├── application.module.ts
+│   │   ├── authentification
+│   │   │   ├── authentification.controleur.ts
+│   │   │   ├── authentification.module.ts
+│   │   │   ├── authentification.service.ts
+│   │   │   └── strategies
+│   │   ├── commun
+│   │   │   └── health.controller.ts
+│   │   ├── exercise
+│   │   │   ├── dto
+│   │   │   ├── exercises.controller.ts
+│   │   │   ├── exercises.module.ts
+│   │   │   └── exercises.service.ts
+│   │   ├── plannings
+│   │   │   ├── dto
+│   │   │   ├── plannings.controller.ts
+│   │   │   ├── plannings.module.ts
+│   │   │   └── plannings.service.ts
+│   │   ├── principal.ts
+│   │   ├── prisma
+│   │   │   ├── prisma.module.ts
+│   │   │   └── prisma.service.ts
+│   │   ├── utilisateurs
+│   │   │   ├── utilisateurs.controleur.ts
+│   │   │   ├── utilisateurs.module.ts
+│   │   │   └── utilisateurs.service.ts
+│   │   └── workouts
+│   │       ├── dto
+│   │       ├── workouts.controller.spec.ts
+│   │       ├── workouts.controller.ts
+│   │       ├── workouts.module.ts
+│   │       ├── workouts.service.spec.ts
+│   │       └── workouts.service.ts
+│   ├── test_workouts.sh
+│   ├── tests
+│   │   ├── jest-e2e.json
+│   │   ├── plannings.e2e-spec.ts
+│   │   ├── test_api.sh
+│   │   ├── test_planning_jours.sh
+│   │   ├── test_planning_jours_full.sh
+│   │   └── workouts.e2e-spec.ts
+│   ├── ts-node
+│   ├── tsconfig.jest.json
+│   └── tsconfig.json
+├── Frontend
+│   ├── app
+│   │   ├── (tabs)
+│   │   │   ├── _layout.tsx
+│   │   │   ├── index.tsx
+│   │   │   ├── profil
+│   │   │   ├── social
+│   │   │   └── workouts
+│   │   ├── _layout.tsx
+│   │   ├── auth
+│   │   │   └── creation.tsx
+│   │   ├── ecrans
+│   │   │   ├── DetailsEntrainement.tsx
+│   │   │   ├── EntrainementLive.tsx
+│   │   │   ├── FormulaireEntrainement.tsx
+│   │   │   └── ListeEntrainements.tsx
+│   │   ├── navigation
+│   │   │   └── NavigateurApp.tsx
+│   │   └── planning
+│   │       └── new.tsx
+│   ├── app.json
+│   ├── assets
+│   │   ├── adaptive-icon.png
+│   │   ├── favicon.png
+│   │   ├── icon.png
+│   │   └── splash-icon.png
+│   ├── babel.config.js
+│   ├── expo-router-env.d.ts
+│   ├── package-lock.json
+│   ├── package.json
+│   ├── package.json.bak.1759912569
+│   ├── src
+│   │   ├── api
+│   │   │   ├── http.ts
+│   │   │   ├── planning.ts
+│   │   │   └── workouts.ts
+│   │   ├── composants
+│   │   │   └── CarteEntrainement.tsx
+│   │   ├── lib
+│   │   │   └── workouts.ts
+│   │   └── types
+│   │       ├── exercise.ts
+│   │       ├── expo-router.d.ts
+│   │       ├── planning.ts
+│   │       └── workout.ts
+│   └── tsconfig.json
+├── arbo_front.txt
+├── dev.sh
+├── docker-compose.yml
+├── package-lock.json
+├── package.json
+└── tsconfig.json
+
+43 directories, 77 files

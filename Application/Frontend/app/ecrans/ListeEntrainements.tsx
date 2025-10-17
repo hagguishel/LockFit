@@ -13,7 +13,12 @@ export default function ListeEntrainements({ navigation }: any) {
   // bouton "Debug" en haut à droite
   useLayoutEffect(() => {
     navigation?.setOptions?.({
-      headerRight: () => <Button title="Debug" onPress={onDebug} />,
+      headerRight: () => (
+        <View style={{ flexDirection: "row", gap: 8 }}>
+          <Button title="Debug" onPress={onDebug} />
+          <Button title="Nouveau" onPress={() => navigation.navigate("Nouveau")} />
+        </View>
+      ),
     });
   }, [navigation, data]);
 

@@ -14,11 +14,13 @@ export default function HomeScreen() {
 
       <View style={styles.buttons}>
         {/* Link 1 */}
-          <Pressable style={styles.cta} onPress={() => Alert.alert("Bientôt, la possibilité de se connecter avec son compte")}>
+          <Pressable style={styles.cta}
+          onPress={() => router.push("/auth/login")}
+          >
             <Text style={styles.ctaText}>Connexion 🔗</Text>
           </Pressable>
 
-        
+
         {/* Link 2 */}
         <Link href="/auth/creation" asChild>
           <Pressable style={styles.cta} accessibilityRole="button">

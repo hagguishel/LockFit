@@ -6,6 +6,7 @@ import {
 import { PrismaService } from '../prisma/prisma.service';
 import { CreateWorkoutDto } from './dto/create-workout.dto';
 import { UpdateWorkoutDto } from './dto/update-workout.dto';
+import { log } from 'console';
 
 @Injectable()
 export class WorkoutsService {
@@ -139,7 +140,9 @@ export class WorkoutsService {
     if (dto.finishedAt !== undefined) {
       data.finishedAt = this.toDateOrThrow(dto.finishedAt);
     }
-
+    if (dto.items !== undefined)
+      data.items = dto.items;
+    console.log(data)
     return this.prisma.workout.update({
       where: { id },
       data,

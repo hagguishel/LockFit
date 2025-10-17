@@ -7,7 +7,7 @@ type ListQuery = { from?: string; to?: string };
 
 type WorkoutItem = {
   exerciseId: string;
-  sets: Array<{ reps: number; weight?: number; restSec?: number }>;
+  sets: Array<{ reps: number; weight?: number; rest?: number }>;
 }
 /**
  * Liste paginée des entraînements
