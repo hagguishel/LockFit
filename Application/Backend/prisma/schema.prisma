@@ -63,34 +63,65 @@ model PlanningJour {
 }
 
 model Utilisateur {
-  id             String    @id @default(cuid())
-  email          String    @unique
-  password       String
-  firstName      String
-  lastName       String
-  mfaEnabled     Boolean   @default(false)
-  mfaSecret      String?
-  createdAt      DateTime  @default(now())
-  updatedAt      DateTime  @updatedAt 
+  id         String   @id @default(cuid())
+  email      String   @unique
+  password   String
+  firstName  String
+  lastName   String
+  mfaEnabled Boolean  @default(false)
+  mfaSecret  String?
+  createdAt  DateTime @default(now())
+  updatedAt  DateTime @updatedAt
 
-  refreshTokens  RefreshToken[]
+  refreshTokens RefreshToken[]
+  MfaChallenge  MfaChallenge[]
 }
 
 model RefreshToken {
-  id              String        @id @default(cuid())
-  utilisateurId   String
-  tokenHash       String
-  jti             String        @unique         //Jeton d'identifiant unique du token 
-  expiresAt       DateTime                      //Date d'expiration du token
-  revoked         Boolean       @default(false)
-  createdAt       DateTime      @default(now())
-  revokedAt       DateTime?
+  id            String    @id @default(cuid())
+  utilisateurId String
+  tokenHash     String
+  jti           String    @unique //Jeton d'identifiant unique du token
+  expiresAt     DateTime //Date d'expiration du token
+  revoked       Boolean   @default(false)
+  createdAt     DateTime  @default(now())
+  revokedAt     DateTime?
 
-  utilisateur     Utilisateur   @relation(fields: [utilisateurId], references: [id])
+  utilisateur Utilisateur @relation(fields: [utilisateurId], references: [id])
 
   @@index([utilisateurId, revoked])
   @@index([expiresAt])
   @@map("refresh_tokens")
+}
+
+/// Challenge MFA "code à 6 chiffre" envoyé à l'utilisateur (mail/SMS)
+model MfaChallenge {
+  id String @id @default(cuid())
+
+  ///L'utilisateur concerné (relation obligatoire)
+  utilisateurId String
+  utilisateur   Utilisateur @relation(fields: [utilisateurId], references: [id], onDelete: Cascade)
+
+  /// Liaison temporaire entre /auth/login (MFA requis) et /auth/mfa/verify
+  /// Sert de "ticket" court, indépendant de l'ID utilisateur.
+  tempSessionId String @unique
+
+  /// Code à 6 chiffres (ex: “123456”). On peut le stocker en clair côté dev ;
+  /// en prod, tu peux hasher si tu veux pousser la sécurité (coût supplémentaire).
+  code String
+
+  /// Validité du challenge (ex: now + 300s)
+  expiresAt DateTime
+
+  /// Indique si le challenge a été consommé (évite les replays)
+  used Boolean @default(false)
+
+  createdAt DateTime @default(now())
+
+  /// Index pour retrouver vite les challenges d’un utilisateur
+  @@index([utilisateurId])
+  /// Index pour nettoyer (cron) les challenges expirés
+  @@index([expiresAt])
 }
 
 model Exercise {
