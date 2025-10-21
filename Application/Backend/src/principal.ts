@@ -7,6 +7,14 @@ import { ValidationPipe } from '@nestjs/common';
 import helmet from 'helmet';
 import { AppModule } from './application.module';
 
+function resolveCorsOrigins() {
+  const raw = process.env.CORS_ORIGINS?.trim();
+  if (!raw || raw === '*') {
+    return true as const;
+  }
+  return raw.split(',').map(s => s.trim()).filter(Boolean);
+}
+
 async function bootstrap() {
   // 1) Crée l’app Nest (CORS off ici, on va l’activer juste après avec une config claire)
   const app = await NestFactory.create(AppModule, { cors: false });

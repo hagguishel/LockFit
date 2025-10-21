@@ -10,11 +10,13 @@ import { WorkoutsModule } from './workouts/workouts.module';
 import { PlanningsModule } from './plannings/plannings.module';
 import { ExercisesModule } from './exercise/exercises.module';
 import { HealthController } from './commun/health.controller';
+import { AuthModule } from './authentification/authentification.module';
 
 @Module({
   imports: [
     ConfigModule.forRoot({ isGlobal: true }),
     ThrottlerModule.forRoot([{ ttl: 60_000, limit: 60 }]),
+    AuthModule,
     PrismaModule,
     WorkoutsModule,
     PlanningsModule,
