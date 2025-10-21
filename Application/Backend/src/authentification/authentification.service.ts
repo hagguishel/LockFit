@@ -8,7 +8,7 @@ import * as argon2 from 'argon2';
 import { authenticator } from 'otplib';
 import { randomUUID } from 'crypto';
 
-const ACCESS_TTL  = process.env.JWT_ACCES_TTL   || '15m';
+const ACCESS_TTL  = process.env.JWT_ACCESS_TTL   || '15m';
 const REFRESH_TTL = process.env.JWT_REFRESH_TTL || '30d';
 
 //AJOUT: fonction helper pour convertir une string en nombre ( pour problèmes de typage)

@@ -10,6 +10,7 @@ import { WorkoutsModule } from './workouts/workouts.module';
 import { PlanningsModule } from './plannings/plannings.module';
 import { ExercisesModule } from './exercise/exercises.module';
 import { HealthController } from './commun/health.controller';
+import { AuthModule } from './authentification/authentification.module';
 
 @Module({
   imports: [
@@ -18,7 +19,8 @@ import { HealthController } from './commun/health.controller';
     PrismaModule,
     WorkoutsModule,
     PlanningsModule,
-    ExercisesModule, // <-- ajoute le module
+    ExercisesModule,
+    AuthModule,
   ],
   controllers: [HealthController],
   providers: [

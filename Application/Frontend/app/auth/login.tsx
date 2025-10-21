@@ -6,7 +6,7 @@
 
 import React, { useState} from "react";
 import { View, Text, TextInput, TouchableOpacity, ActivityIndicator, StyleSheet, Alert } from "react-native";
-import { useRouter } from "expo-router";
+import { useRouter, Link } from "expo-router";
 import { Feather, Ionicons } from "@expo/vector-icons";
 import { login } from "@/api/auth";
 import { isMfaRequired } from "@/types/auth";
@@ -157,9 +157,11 @@ export default function LoginRoute() {
           </TouchableOpacity>
 
         {/* Créer un compte */}
-        <TouchableOpacity style={styles.outlineBtn} onPress={() => { /* router.push("/auth/creation") */ }}>
-          <Text style={styles.outlineBtnText}>Créer un compte</Text>
-        </TouchableOpacity>
+        <Link href="/auth/creation" asChild>
+          <TouchableOpacity style={styles.outlineBtn}>
+            <Text style={styles.outlineBtnText}>Créer un compte</Text>
+          </TouchableOpacity>
+        </Link>
 
         {/* Séparateur */}
         <View style={styles.separatorRow}>

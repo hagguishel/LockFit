@@ -58,3 +58,6 @@ services:
 
 volumes:
   pgdata:
+networks:
+  default:
+    enable_ipv6: true

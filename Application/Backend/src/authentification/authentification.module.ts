@@ -11,7 +11,7 @@ import { AuthController } from './authentification.controleur';
 // Stratégie JWT : lit le header Authorization, vérifie la signature et attache le payload à req.user
 
 // Accès a la base de données avec Prisma
-import { PrismaService } from "../prisma/prisma.service";
+import { PrismaModule } from "../prisma/prisma.module";
 import { JwtStrategy } from "./strategies/jwt.strategy";
 import { RefreshJwtStrategy } from "./strategies/refresh.strategy";
 
@@ -37,6 +37,7 @@ function parseTTL(ttl: string | undefined, defaultSeconds: number): number {
     imports: [
         //Branche Passport et déclare la stratégie par default  "jwt"
         // En gros, permet d'utiliser @UseGuards(AuthGuard()) sans préciser 'jwt' à chaque fois.
+        PrismaModule,
         PassportModule.register({ defaultStrategy: 'jwt' }),
 
         // Configure le module JWT de manière asynchrone pour lire les secrets depuis les variables d'environnement
@@ -57,7 +58,7 @@ function parseTTL(ttl: string | undefined, defaultSeconds: number): number {
     // - AuthService : inscription, login, MFA (argon2 + otplib utilisés dans le service)
     // - JwtStrategy : vérifie les tokens entrants
     // - PrismaService : accès BD (users, etc.)
-    providers: [AuthService, PrismaService, JwtStrategy, RefreshJwtStrategy],
+    providers: [AuthService, JwtStrategy, RefreshJwtStrategy],
 
     // Exporte certains éléments pour réutilisation par d'autres modules si besoin
     // (par exemple, utiliser JwtService ailleurs pour signer un token)
