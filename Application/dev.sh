@@ -8,7 +8,8 @@ set -euo pipefail
 readonly ROOT_DIR="$(cd "$(dirname "$0")" && pwd)"
 readonly BACK_DIR="$ROOT_DIR/Backend"
 readonly FRONT_DIR="$ROOT_DIR/Frontend"
-readonly BACK_ENV="$BACK_DIR/.env"
+readonly BACK_ENV_LOCAL="$BACK_DIR/.env"
+readonly BACK_ENV_DOCKER="$BACK_DIR/.env.docker"
 readonly FRONT_ENV="$FRONT_DIR/.env"
 readonly LOG_FILE="/tmp/cloudflared.lockfit.log"
 
@@ -47,8 +48,8 @@ Options:
   -h, --help      Afficher cette aide
 
 Exemples:
-  $0                    # Lancement standard
-  $0 --local-db         # Avec DB locale
+  $0                    # Lancement standard (Docker + .env.docker)
+  $0 --local-db         # Avec .env local
   $0 --no-tunnel --lan  # Mode LAN sans tunnel
 EOF
       exit 0
@@ -119,21 +120,25 @@ success "Toutes les dépendances sont présentes"
 # ─────────────────────────────────────────────────────────────
 log_section "⚙️  Configuration de l'environnement"
 
-[ -f "$BACK_ENV" ] || die "Fichier backend .env manquant: $BACK_ENV"
+# Choisir le bon fichier .env
+if [ "$FORCE_LOCAL_DB" -eq 1 ] || [ ! -f "$BACK_ENV_DOCKER" ]; then
+  BACK_ENV="$BACK_ENV_LOCAL"
+  info "Utilisation de .env (exécution locale)"
+else
+  BACK_ENV="$BACK_ENV_DOCKER"
+  info "Utilisation de .env.docker (conteneurs Docker)"
+fi
 
+# Vérifier que le fichier choisi existe
+[ -f "$BACK_ENV" ] || die "Fichier backend env manquant: $BACK_ENV"
+
+# Extraire PORT et DATABASE_URL
 PORT="$(grep -E '^PORT=' "$BACK_ENV" | tail -1 | cut -d= -f2 || echo "3001")"
 PORT="${PORT:-3001}"
-
-# Fichiers compose (base + éventuel override)
-COMPOSE_FILES="-f \"$ROOT_DIR/docker-compose.yml\""
-COMPOSE_FLAGS=""
-
-# ----------------- Checks -----------------
-[ -f "$BACK_ENV" ] || die "Backend env manquant: $BACK_ENV"
-PORT="$(grep -E '^PORT=' "$BACK_ENV" | tail -1 | cut -d= -f2 || true)"; PORT="${PORT:-3001}"
 DBURL="$(grep -E '^DATABASE_URL=' "$BACK_ENV" | tail -1 | cut -d= -f2- || true)"
 [ -n "$DBURL" ] || die "DATABASE_URL absent dans $BACK_ENV"
 
+# Déterminer si on a besoin d'une DB locale
 NEED_LOCAL_DB="$FORCE_LOCAL_DB"
 echo "$DBURL" | grep -q '@db:' && NEED_LOCAL_DB=1
 
@@ -142,7 +147,11 @@ echo "🧩 Backend .env : $BACK_ENV"
 echo "🌐 Port API     : $PORT"
 echo "🗄️  Base de données: $([ "$NEED_LOCAL_DB" -eq 1 ] && echo 'locale (Docker)' || echo 'distante (Neon/Supabase)')"
 
-# Si DB hébergée : créer un override Compose éphémère qui retire depends_on: db (évite l'erreur d'undefined service)
+# Fichiers compose (base + éventuel override)
+COMPOSE_FILES="-f \"$ROOT_DIR/docker-compose.yml\""
+COMPOSE_FLAGS=""
+
+# Si DB hébergée : créer un override Compose éphémère qui retire depends_on: db
 OVERRIDE_FILE=""
 if [ "$NEED_LOCAL_DB" -eq 0 ]; then
   OVERRIDE_FILE="$(mktemp)"
@@ -157,21 +166,32 @@ else
   COMPOSE_FLAGS="--profile local-db"
 fi
 
-# Petite fonction d'appel Compose avec -f multiples et flags profil
+# Fonction d'appel Compose avec le bon fichier .env
 compose() {
-  # shellcheck disable=SC2086
-  eval $DC $COMPOSE_FILES $COMPOSE_FLAGS "$@"
+  if [ "$BACK_ENV" = "$BACK_ENV_DOCKER" ]; then
+    # shellcheck disable=SC2086
+    eval $DC $COMPOSE_FILES $COMPOSE_FLAGS --env-file "$BACK_ENV_DOCKER" "$@"
+  else
+    # shellcheck disable=SC2086
+    eval $DC $COMPOSE_FILES $COMPOSE_FLAGS "$@"
+  fi
 }
 
-# ----------------- DB locale (si besoin) -----------------
+# Nettoyage à la sortie
+trap '[ -n "$OVERRIDE_FILE" ] && rm -f "$OVERRIDE_FILE" 2>/dev/null || true' EXIT
+
+# ─────────────────────────────────────────────────────────────
+#  Database Setup (si locale)
+# ─────────────────────────────────────────────────────────────
 if [ "$NEED_LOCAL_DB" -eq 1 ]; then
-  echo "▶️  Docker: DB locale …"
+  log_section "🗄️  Démarrage de la base de données locale"
+
   compose up -d db
-  # petit wait pour la DB
-  echo "⏳ Attente DB (pg_isready)…"
+
+  info "Attente de la disponibilité de PostgreSQL..."
   for i in {1..30}; do
     if compose exec -T db pg_isready -U postgres -h localhost >/dev/null 2>&1; then
-      echo "✅ DB prête"
+      success "Base de données prête"
       break
     fi
     [ "$i" -eq 30 ] && die "La base de données ne répond pas après 30s"
@@ -179,57 +199,52 @@ if [ "$NEED_LOCAL_DB" -eq 1 ]; then
   done
 fi
 
-# ----------------- Build backend (pour avoir Prisma CLI) -----------------
-echo "🏗️  Build image backend (pour Prisma CLI)…"
-compose build backend >/dev/null
+# ─────────────────────────────────────────────────────────────
+#  Backend Build
+# ─────────────────────────────────────────────────────────────
+log_section "🏗️  Construction de l'image backend"
 
-$DC build backend >/dev/null 2>&1 || die "Échec du build backend"
+compose build backend >/dev/null 2>&1 || die "Échec du build backend"
 success "Image backend construite"
 
 # ─────────────────────────────────────────────────────────────
 #  Database Migrations
 # ─────────────────────────────────────────────────────────────
 if [ "$NO_MIGRATE" -eq 0 ]; then
-  echo "🗂️  Prisma: migrate deploy (avec retry)…"
+  log_section "🗂️  Migrations Prisma"
+
   OK=0
   for i in {1..20}; do
-    if compose run --rm backend npx prisma migrate deploy; then
-      OK=1; echo "✅ Migrations appliquées"; break
+    if compose run --rm -e DATABASE_URL="$DBURL" backend npx prisma migrate deploy; then
+      OK=1
+      success "Migrations appliquées"
+      break
     fi
-    [ "$((i % 5))" -eq 0 ] && echo "   Tentative $i/20..."
+    [ "$((i % 5))" -eq 0 ] && info "Tentative $i/20..."
     sleep 2
   done
+
   if [ "$OK" -eq 0 ]; then
-    echo "⚠️  migrate deploy KO → fallback prisma db push"
-    compose run --rm backend npx prisma db push
+    warn "migrate deploy KO → fallback prisma db push"
+    compose run --rm -e DATABASE_URL="$DBURL" backend sh -c "npx prisma db push"
   fi
 else
   info "Migrations Prisma ignorées (--no-migrate)"
 fi
 
-# ----------------- Backend -----------------
-echo "▶️  Docker: backend …"
+# ─────────────────────────────────────────────────────────────
+#  Backend Startup
+# ─────────────────────────────────────────────────────────────
+log_section "🚀 Démarrage du backend"
+
 compose up -d backend
 
-echo "⏳ Attente API http://localhost:$PORT/api/v1/health …"
-for i in {1..90}; do
-  if curl -fsS "http://localhost:$PORT/api/v1/health" >/dev/null; then
-    echo "✅ API OK"
-    break
-  fi
-  sleep 1
-  [ "$i" -eq 30 ] && echo "…toujours en attente (30s)"
-done
-curl -fsS "http://localhost:$PORT/api/v1/health" >/dev/null || {
-  echo "❌ L’API ne répond pas. Derniers logs backend :"
-  compose logs --tail=120 backend || true
-  exit 1
-}
-
-echo "⏳ Attente de l'API (http://localhost:$PORT/api/v1/health)..."
+info "Attente de l'API (http://localhost:$PORT/api/v1/health)..."
 if ! wait_for_service "http://localhost:$PORT/api/v1/health" 90 "API Backend"; then
   echo ""
-  die "L'API ne répond pas. Logs:\n$($DC logs --tail=50 backend)"
+  warn "L'API ne répond pas. Derniers logs:"
+  compose logs --tail=50 backend || true
+  die "Échec du démarrage de l'API"
 fi
 
 # ─────────────────────────────────────────────────────────────
@@ -246,7 +261,7 @@ if [ "$NO_TUNNEL" -eq 0 ]; then
   CF_PID=$!
   trap 'kill "$CF_PID" 2>/dev/null || true; [ -n "$OVERRIDE_FILE" ] && rm -f "$OVERRIDE_FILE" 2>/dev/null || true' EXIT
 
-  echo "⏳ Attente de l'URL trycloudflare.com..."
+  info "Attente de l'URL trycloudflare.com..."
   for i in $(seq 1 40); do
     if grep -qE 'https://[a-z0-9-]+\.trycloudflare\.com' "$LOG_FILE" 2>/dev/null; then
       TUNNEL_URL="$(grep -m1 -oE 'https://[a-z0-9-]+\.trycloudflare\.com' "$LOG_FILE")"
@@ -258,14 +273,10 @@ if [ "$NO_TUNNEL" -eq 0 ]; then
   done
 
   if ! echo "$TUNNEL_URL" | grep -q 'trycloudflare.com'; then
-    echo "❌ Pas d’URL tunnel détectée."
-    tail -n +1 "$LOG" || true
-    exit 1
+    warn "Pas d'URL tunnel détectée"
+    tail -n 20 "$LOG_FILE" || true
+    die "Échec du tunnel Cloudflare"
   fi
-  echo "🌐 Tunnel API: $TUNNEL_URL"
-else
-  # Nettoyage de l'override à la sortie si pas de tunnel (pas de trap déclenché par background)
-  trap '[ -n "$OVERRIDE_FILE" ] && rm -f "$OVERRIDE_FILE" 2>/dev/null || true' EXIT
 fi
 
 # ─────────────────────────────────────────────────────────────
@@ -280,7 +291,11 @@ cat "$FRONT_ENV"
 
 if [ "$NO_EXPO" -eq 1 ]; then
   echo ""
-  info "Mode --no-expo activé. Backend disponible sur: $TUNNEL_URL/api/v1"
+  success "Mode --no-expo activé"
+  info "Backend disponible sur: $TUNNEL_URL/api/v1"
+  info ""
+  info "Pour tester l'API:"
+  echo "  curl $TUNNEL_URL/api/v1/health"
   exit 0
 fi
 

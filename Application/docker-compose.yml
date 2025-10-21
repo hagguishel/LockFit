@@ -40,8 +40,9 @@ services:
       - ./Backend:/app
       - /app/node_modules
     env_file:
-      - ./Backend/.env
+      - ./Backend/.env.docker
     environment:
+      DATABASE_URL: postgresql://lockfit:lockfit@db:5432/lockfit?schema=public
       PORT: "3001"
       NODE_ENV: development
       TZ: Europe/Paris
