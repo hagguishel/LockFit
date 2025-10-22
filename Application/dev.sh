@@ -59,8 +59,7 @@ done
 #  Helpers
 # ─────────────────────────────────────────────────────────────
 have() { command -v "$1" >/dev/null 2>&1; }
-die() { echo -e "
-❌ $*" >&2; exit 1; }
+die() { echo -e "\n❌ $*" >&2; exit 1; }
 info() { echo "ℹ️  $*"; }
 success() { echo "✅ $*"; }
 warn() { echo "⚠️  $*"; }
@@ -76,12 +75,23 @@ wait_for_service() {
   local url="$1"
   local max_attempts="${2:-60}"
   local service_name="${3:-Service}"
+  
+  # Délai initial pour laisser le conteneur démarrer
+  info "Attente de $((5)) secondes pour le démarrage du conteneur…"
+  sleep 5
+  
   for i in $(seq 1 "$max_attempts"); do
-    if curl -fsS "$url" >/dev/null 2>&1; then
+    # Force IPv4 avec -4 pour éviter les problèmes IPv6
+    if curl -4 -fsS "$url" >/dev/null 2>&1; then
       success "$service_name est prêt"
       return 0
     fi
-    [ "$i" -eq 30 ] && warn "Toujours en attente après 30s..."
+    # Debug tous les 10s
+    if [ $((i % 10)) -eq 0 ]; then
+      warn "Toujours en attente après ${i}s... (tentative $i/$max_attempts)"
+      info "Vérification de l'état du conteneur:"
+      docker ps --filter name=lockfit_backend --format "table {{.Names}}\t{{.Status}}\t{{.Ports}}"
+    fi
     sleep 1
   done
   return 1
@@ -188,11 +198,24 @@ fi
 # ─────────────────────────────────────────────────────────────
 #  Backend
 # ─────────────────────────────────────────────────────────────
+info "▶️  Nettoyage des conteneurs existants…"
+compose down 2>/dev/null || true
+
+# Forcer l'arrêt du conteneur backend s'il existe encore
+if docker ps -a --format '{{.Names}}' | grep -q "^lockfit_backend$"; then
+  info "Arrêt forcé du conteneur lockfit_backend…"
+  docker stop lockfit_backend 2>/dev/null || true
+  docker rm lockfit_backend 2>/dev/null || true
+fi
+
 info "▶️  Docker: backend …"
 compose up -d backend
 info "⏳ Attente de l'API (http://localhost:$PORT/api/v1/health)…"
 if ! wait_for_service "http://localhost:$PORT/api/v1/health" 90 "API Backend"; then
-  echo ""; echo "❌ L’API ne répond pas. Derniers logs backend :"; compose logs --tail=120 backend || true; exit 1
+  echo ""
+  echo "❌ L'API ne répond pas après 90s. Derniers logs backend :"
+  compose logs --tail=120 backend || true
+  die "Impossible de démarrer l'API Backend"
 fi
 
 # ─────────────────────────────────────────────────────────────
@@ -231,8 +254,7 @@ fi
 # ─────────────────────────────────────────────────────────────
 log_section "📝 Configuration du frontend"
 mkdir -p "$FRONT_DIR"
-printf "EXPO_PUBLIC_API_URL=%s
-" "$TUNNEL_URL" > "$FRONT_ENV"
+printf "EXPO_PUBLIC_API_URL=%s\n" "$TUNNEL_URL" > "$FRONT_ENV"
 success "Fichier $FRONT_ENV créé"
 cat "$FRONT_ENV"
 
@@ -249,9 +271,8 @@ if [ "$OFFLINE" -eq 1 ] || [ "$LAN" -eq 1 ]; then
   EXPO_ARGS="--lan -c"
   if [ -z "$HOST_IP" ] && command -v powershell.exe >/dev/null 2>&1; then
     HOST_IP="$(powershell.exe -NoProfile -Command \
-      "(Get-NetIPAddress -AddressFamily IPv4 | ? { $_.IPAddress -match '^(10\.|172\.|192\.168\.)' } | select -First 1 -ExpandProperty IPAddress)" \
-      | tr -d '
-')"
+      "(Get-NetIPAddress -AddressFamily IPv4 | ? { \$_.IPAddress -match '^(10\.|172\.|192\.168\.)' } | select -First 1 -ExpandProperty IPAddress)" \
+      | tr -d '\r')"
   fi
   if [ -n "$HOST_IP" ]; then
     info "Mode LAN avec IP: $HOST_IP"
