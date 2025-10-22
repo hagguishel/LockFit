@@ -129,23 +129,47 @@ if [ "$NO_TUNNEL" -eq 0 ]; then have cloudflared || die "cloudflared manquant (i
 success "Toutes les dépendances sont présentes"
 
 # ─────────────────────────────────────────────────────────────
-#  Environnement
+#  Environnement (FIX: BACK_ENV défini proprement)
 # ─────────────────────────────────────────────────────────────
 log_section "⚙️  Configuration de l'environnement"
-[ -f "$BACK_ENV" ] || die "Fichier backend .env manquant: $BACK_ENV"
+
+# Choisir le .env backend (.env prioritaire, sinon .env.docker)
+BACK_ENV="$BACK_ENV_LOCAL"
+if [ ! -f "$BACK_ENV" ] && [ -f "$BACK_ENV_DOCKER" ]; then
+  BACK_ENV="$BACK_ENV_DOCKER"
+fi
+
+[ -f "$BACK_ENV" ] || die "Fichier backend .env manquant: $BACK_ENV_LOCAL ou $BACK_ENV_DOCKER"
+
+# Déterminer le PORT (depuis BACK_ENV ou défaut)
 PORT=$(grep -E '^PORT=' "$BACK_ENV" | tail -1 | cut -d= -f2 || true); PORT=${PORT:-3001}
-DBURL=$(grep -E '^DATABASE_URL=' "$BACK_ENV" | tail -1 | cut -d= -f2- || true)
-[ -n "$DBURL" ] || die "DATABASE_URL absent dans $BACK_ENV"
+
+# Déterminer la DATABASE_URL (ordre de priorité)
+# 1) variable d'environnement hôte (export DATABASE_URL=...)
+# 2) BACK_ENV (./Backend/.env)
+# 3) BACK_ENV_DOCKER (./Backend/.env.docker)
+DBURL="${DATABASE_URL:-}"
+if [ -z "$DBURL" ] && [ -f "$BACK_ENV" ]; then
+  DBURL=$(grep -E '^DATABASE_URL=' "$BACK_ENV" | tail -1 | cut -d= -f2- || true)
+fi
+if [ -z "$DBURL" ] && [ -f "$BACK_ENV_DOCKER" ]; then
+  DBURL=$(grep -E '^DATABASE_URL=' "$BACK_ENV_DOCKER" | tail -1 | cut -d= -f2- || true)
+fi
+[ -n "$DBURL" ] || die "Aucune DATABASE_URL trouvée. Définis-la via export DATABASE_URL=..., ou ajoute-la dans $BACK_ENV_DOCKER"
 
 COMPOSE_FILES=(-f "$ROOT_DIR/docker-compose.yml")
 COMPOSE_FLAGS=()
 
 # Toujours sans service db local → override pour retirer depends_on
 OVERRIDE_FILE="$(mktemp)"
-cat > "$OVERRIDE_FILE" <<'YAML'
+cat > "$OVERRIDE_FILE" <<YAML
 services:
   backend:
     depends_on: []
+    environment:
+      DATABASE_URL: "${DBURL}"
+      PORT: "${PORT}"
+      HOST: "0.0.0.0"
 YAML
 COMPOSE_FILES+=(-f "$OVERRIDE_FILE")
 compose() { "${DC[@]}" "${COMPOSE_FILES[@]}" "${COMPOSE_FLAGS[@]}" "$@"; }
@@ -182,7 +206,7 @@ if [ "$NO_MIGRATE" -eq 0 ]; then
   info "🗂️  Prisma: migrate deploy (non‑interactif)…"
   OK=0
   for i in {1..20}; do
-    if DATABASE_URL="$DBURL" compose run --rm backend sh -lc 'npx --yes prisma migrate deploy --schema ./prisma/schema.prisma'; then
+    if DATABASE_URL="$DBURL" compose run --rm -e DATABASE_URL="$DBURL" backend sh -lc 'echo "Using DATABASE_URL=$DATABASE_URL"; npx --yes prisma migrate deploy --schema ./prisma/schema.prisma'; then
       OK=1; success "Migrations appliquées"; break
     fi
     [ $((i % 5)) -eq 0 ] && warn "Tentative $i/20…"
@@ -191,7 +215,7 @@ if [ "$NO_MIGRATE" -eq 0 ]; then
 
   if [ "$OK" -eq 0 ]; then
     warn "migrate deploy KO → fallback prisma db push"
-    DATABASE_URL="$DBURL" compose run --rm backend sh -lc 'npx --yes prisma db push --schema ./prisma/schema.prisma' || die "Échec Prisma même en fallback. URL utilisée: $DBURL"
+    DATABASE_URL="$DBURL" compose run --rm -e DATABASE_URL="$DBURL" backend sh -lc 'echo "Using DATABASE_URL=$DATABASE_URL"; npx --yes prisma db push --schema ./prisma/schema.prisma' || die "Échec Prisma même en fallback. URL utilisée: $DBURL"
   fi
 else
   info "Migrations Prisma ignorées (--no-migrate)"
@@ -273,7 +297,7 @@ if [ "$OFFLINE" -eq 1 ] || [ "$LAN" -eq 1 ]; then
   EXPO_ARGS="--lan -c"
   if [ -z "$HOST_IP" ] && command -v powershell.exe >/dev/null 2>&1; then
     HOST_IP="$(powershell.exe -NoProfile -Command \
-      "(Get-NetIPAddress -AddressFamily IPv4 | ? { \$_.IPAddress -match '^(10\.|172\.|192\.168\.)' } | select -First 1 -ExpandProperty IPAddress)" \
+      "(Get-NetIPAddress -AddressFamily IPv4 | ? { \$_.IPAddress -match '^(10\\.|172\\.|192\\.168\\.)' } | select -First 1 -ExpandProperty IPAddress)" \
       | tr -d '\r')"
   fi
   if [ -n "$HOST_IP" ]; then
