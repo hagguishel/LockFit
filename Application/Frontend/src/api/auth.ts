@@ -8,6 +8,7 @@
  * En cas d'erreur serveur: on lève un HttpError normalisé.
  */
 
+import { access } from "fs";
 import type { LoginSuccess, HttpError, LoginMfaRequired } from "../types/auth";
 // 1) Base URL de l'API lue depuis l'environnement Expo (.env)
 //    On retire les / de fin pour éviter les doubles slash.
@@ -37,7 +38,7 @@ export async function login(
     password,
   };
   // 3) On prépare l'URL exacte (avec le préfixe /api/v1 de ton back)
-  const url = `${BASE}/api/v1/auth/login`;
+  const url = `${BASE}/auth/login`;
 
   // 4) On exécute la requête HTTP.
   //    try/catch sert à distinguer les ERREURS RÉSEAU (offline, DNS, etc.)
@@ -102,7 +103,11 @@ export async function login(
 
   // 8) Cas "connexion directe"
   //    On tolère "tokens" (contrat recommandé) ET "token" (ta version actuelle)
-  const tokens = body?.tokens ?? body?.token; // <- compatibilité
+  const tokens =
+  body?.tokens ??
+   (body?.accessToken && body?.refreshToken
+    ? { access: body.accessToken, refresh: body.refreshToken }
+    : null);
   const user = body?.user;
 
   // 9) Vérification minimales pour éviter un object incomplet
@@ -111,7 +116,7 @@ export async function login(
       status: 500,
       error: "BAD_PAYLOAD",
       message:
-      "Réponse API inattendue: on attend { user, tokens:{access,refresh} } ou { mfaRequired:true, tempSessionId }.",
+      "Attendu { user, accessToken, refreshToken } ou { mfaRequired:true, tempSessionId }.",
     };
     throw malformed;
   }

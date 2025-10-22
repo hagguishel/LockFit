@@ -13,7 +13,7 @@ import { isMfaRequired } from "@/types/auth";
 import { saveTokens } from "@/lib/tokenStorage";
 
 // ⛳ Mode mock pour tests visuels (met à false quand tu branches le vrai backend)
-const MOCK_AUTH = true;
+const MOCK_AUTH = false;
 
 
 export default function LoginRoute() {
@@ -44,7 +44,7 @@ export default function LoginRoute() {
 
     // Cas 1 : MFA requis → on passe le tempSessionId à l’écran MFA
     if (isMfaRequired(res)) {
-      router.push({ pathname: "/auth/mfa", params: { sid: res.tempSessionId } });
+      router.push({ pathname: "/auth/mfa", params: { sid: res.tempSessionId, email } });
       return;
     }
 

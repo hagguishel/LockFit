@@ -44,7 +44,7 @@ class LoginDto {        //DTO pour /login (email + mot de passe obligatoires).
 }
 
 // Vérifier un code TOTP pendant le login MFA
-class MfaVerifyLoginDto {       //DTO pour /mfa/verify (étape 2 du login MFA) : email + code TOTP.
+class MfaVerifyTotpDto {       //DTO pour /mfa/verify (étape 2 du login MFA) : email + code TOTP.
   @IsEmail()
   email!: string;
 
@@ -58,7 +58,21 @@ class MfaCodeDto {      //DTO pour /mfa/enable (activer la MFA) : on attend uniq
   totpCode!: string;
 }
 
-@Controller('auth') // Préfixe commun à toutes les routes d'auth
+class MfaChallengeVerifyDto {
+  @IsNotEmpty()
+  tempSessionId!: string;
+
+  @IsNotEmpty()
+  code!: string;
+}
+
+class RefreshDto {
+  @IsNotEmpty()
+  refresh!: string;
+}
+
+
+@Controller('auth') // Préfixe complet pour matcher vos URLs curl
 export class AuthController {
   constructor(private readonly authService: AuthService) {}
 
@@ -81,6 +95,12 @@ export class AuthController {
     return this.authService.login(dto);
   }
 
+  @Post('mfa/verify')
+  @HttpCode(200)
+  async mfaVerifyChallenge(@Body() body: MfaChallengeVerifyDto) {
+    return this.authService.mfaVerify(body.tempSessionId, body.code);
+  }
+
   // --------- MFA : créer le secret + otpauth URL (QR) ---------
   // Route protégée (il faut être connecté)
   @Post('mfa/secret')
@@ -99,34 +119,23 @@ export class AuthController {
     return this.authService.mfaEnable(userId, body.totpCode);
   }
 
-  // --------- MFA : vérifier pendant le login (step 2) ---------
-  // Public : utilisé juste après un login qui a renvoyé mfaRequired: true
-  @Post('mfa/verify')
+  @Post('mfa/verify-totp')
   @HttpCode(200)
-  async mfaVerifyDuringLogin(@Body() body: MfaVerifyLoginDto) {
+  async mfaVerifyTotp(@Body() body: MfaVerifyTotpDto) {
     return this.authService.mfaVerifyDuringLogin(body.email, body.totpCode);
   }
-
   @Post('refresh')
-  @UseGuards(AuthGuard('jwt-refresh'))
   @HttpCode(200)
-  async refresh(@Req() req: Request) {
-  // 1) Récupérer le header Authorization brut (contient le refresh token)
-    const authz = (req.headers['authorization'] as string) || '';
-  // 2) Le payload du refresh validé par la stratégie est disponible dans req.user
-    const { sub, tokenId } = (req.user as any);
-  // 3) Déléguer au service: vérifier le hash en base, révoquer l’ancien, renvoyer nouveaux tokens
-    return this.authService.refresh(sub, tokenId, authz);
+  async refresh(@Body() body: RefreshDto) {
+    return this.authService.refresh(body.refresh);
 }
 
   @Post('logout')
-  @UseGuards(AuthGuard('jwt-refresh'))
   @HttpCode(200)
   async logout(@Req() req: Request) {
   // 1) On lit le refresh token brut pour vérifier son hash et le marquer révoqué
     const authz = (req.headers['authorization'] as string) || '';
-    const { sub } = (req.user as any);
   // 2) Le service révoque le refresh courant (sécurité)
-    return this.authService.logout(sub, authz);
+    return this.authService.logout('', authz);
   }
 }

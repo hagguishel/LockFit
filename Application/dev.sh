@@ -11,7 +11,8 @@ set -euo pipefail
 readonly ROOT_DIR="$(cd "$(dirname "$0")" && pwd)"
 readonly BACK_DIR="$ROOT_DIR/Backend"
 readonly FRONT_DIR="$ROOT_DIR/Frontend"
-readonly BACK_ENV="$BACK_DIR/.env"
+readonly BACK_ENV_LOCAL="$BACK_DIR/.env"
+readonly BACK_ENV_DOCKER="$BACK_DIR/.env.docker"
 readonly FRONT_ENV="$FRONT_DIR/.env"
 readonly LOG_FILE="/tmp/cloudflared.lockfit.log"
 
@@ -187,6 +188,7 @@ if [ "$NO_MIGRATE" -eq 0 ]; then
     [ $((i % 5)) -eq 0 ] && warn "Tentative $i/20…"
     sleep 2
   done
+
   if [ "$OK" -eq 0 ]; then
     warn "migrate deploy KO → fallback prisma db push"
     DATABASE_URL="$DBURL" compose run --rm backend sh -lc 'npx --yes prisma db push --schema ./prisma/schema.prisma' || die "Échec Prisma même en fallback. URL utilisée: $DBURL"

@@ -4,13 +4,15 @@
 // 🌐 Configuration de base de l'API
 // =======================================================
 const RAW_BASE = process.env.EXPO_PUBLIC_API_URL ?? "";
-export const API_BASE = RAW_BASE.trim().replace(/\/+$/, ""); // on retire les / en fin d’URL
-if (!API_BASE) {
+export const CLEAN_BASE = RAW_BASE.trim().replace(/\/+$/, ""); // on retire les / en fin d’URL
+if (!CLEAN_BASE) {
   // Sur téléphone réel, on DOIT fournir EXPO_PUBLIC_API_URL (tunnel HTTPS conseillé)
   throw new Error(
     "EXPO_PUBLIC_API_URL manquant (ex: https://<ton-tunnel>.trycloudflare.com/api/v1)"
   );
 }
+
+export const API_BASE = `${CLEAN_BASE}/api/v1`;
 
 // Petit helper pour assembler l’URL finale sans // doublons
 function buildUrl(path: string): string {

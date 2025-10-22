@@ -16,6 +16,7 @@ import { AuthModule } from './authentification/authentification.module';
   imports: [
     ConfigModule.forRoot({ isGlobal: true }),
     ThrottlerModule.forRoot([{ ttl: 60_000, limit: 60 }]),
+    AuthModule,
     PrismaModule,
     WorkoutsModule,
     PlanningsModule,
