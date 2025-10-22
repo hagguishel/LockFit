@@ -259,7 +259,10 @@ trap cleanup EXIT
 if [ "$NO_TUNNEL" -eq 0 ]; then
   log_section "🌐 Configuration du tunnel Cloudflare"
   rm -f "$LOG_FILE"
-  ( cloudflared tunnel --url "http://localhost:$PORT" 2>&1 | tee "$LOG_FILE" ) &
+  ( cloudflared tunnel \
+    --protocol http2 \
+    --ha-connections 2 \
+    --url "http://localhost:$PORT" 2>&1 | tee "$LOG_FILE" ) &
   CF_PID=$!
 
   info "⏳ Attente de l'URL trycloudflare.com…"
