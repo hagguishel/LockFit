@@ -1,5 +1,5 @@
 import { StatusBar } from "expo-status-bar";
-import { Text, StyleSheet, Pressable, View, Alert } from "react-native";
+import { Text, StyleSheet, Pressable, View, } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
 import { Link, useRouter } from "expo-router";
 
@@ -34,7 +34,7 @@ export default function HomeScreen() {
 
 const styles = StyleSheet.create({
   container: {
-    flex: 1, padding: 16, justifyContent: "center", backgroundColor: "#0F1420",
+    flex: 1, padding: 16, justifyContent: "center", backgroundColor: "#0B0F13",
   },
   title: {
     fontSize: 28, fontWeight: "700", color: "#12E29A", marginBottom: 6, textAlign: "center",

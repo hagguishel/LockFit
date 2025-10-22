@@ -13,7 +13,7 @@ import { isMfaRequired } from "@/types/auth";
 import { saveTokens } from "@/lib/tokenStorage";
 
 // ⛳ Mode mock pour tests visuels (met à false quand tu branches le vrai backend)
-const MOCK_AUTH = false;
+const MOCK_AUTH = true;
 
 
 export default function LoginRoute() {
