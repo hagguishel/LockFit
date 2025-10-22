@@ -10,6 +10,7 @@ import {
   Post,
   UseGuards,
   Req,
+  Get,
 } from '@nestjs/common';
 import { AuthGuard } from '@nestjs/passport';              // Protège les routes avec JWT
 import { Request } from 'express';                         //Type de l’objet req (utile quand on fait @Req() req: Request).
@@ -137,5 +138,11 @@ export class AuthController {
     const authz = (req.headers['authorization'] as string) || '';
   // 2) Le service révoque le refresh courant (sécurité)
     return this.authService.logout('', authz);
+  }
+
+  @UseGuards(AuthGuard('jwt'))
+  @Get('me')
+  Getme(@Req() req: Request) {
+    return req.user; // contien sub, email etc depuis JWT
   }
 }

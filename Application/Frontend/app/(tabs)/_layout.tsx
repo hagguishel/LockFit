@@ -11,13 +11,20 @@ export default function TabsLayout() {
         tabBarActiveTintColor: "#12E29A",
         tabBarInactiveTintColor: "#98A2B3",
         tabBarStyle: {
-          backgroundColor: "#0B1220",
+          backgroundColor: "#0B0F13",
           borderTopColor: "transparent",
           height: Platform.select({ ios: 92, default: 70 }),
           paddingTop: 6,
           paddingBottom: Platform.select({ ios: 22, default: 10 }),
+          borderTopLeftRadius: 18,
+          borderTopRightRadius: 18,
+          position: "absolute",
+          shadowColor: "#000",
+          shadowOpacity: 0.25,
+          shadowRadius: 12,
+          shadowOffset: { width: 0, height: -4 },
         },
-        tabBarLabelStyle: { fontSize: 12 },
+        tabBarLabelStyle: { fontSize: 12, fontWeight: "600" },
       }}
     >
       {/* Accueil -> app/(tabs)/index.tsx */}
@@ -40,7 +47,7 @@ export default function TabsLayout() {
           ),
         }}
       />
-      
+
       {/* On enlève les routes qui apparaissent sur l'application*/}
       <Tabs.Screen name="workouts/new" options={{ href: null }} />
         <Tabs.Screen name="workouts/[id]" options={{ href: null }} />
