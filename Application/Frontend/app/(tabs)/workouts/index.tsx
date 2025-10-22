@@ -120,7 +120,7 @@ export default function WorkoutsScreen() {
           data={items}
           keyExtractor={(w) => w.id}
           refreshControl={<RefreshControl refreshing={refreshing} onRefresh={onRefresh} />}
-          contentContainerStyle={{ gap: layout.gap.md, paddingBottom: 96 }}
+          contentContainerStyle={{ gap: layout.gap.md, paddingBottom: 128 }} // évite que le FAB masque le dernier item
           renderItem={({ item }) => (
             <Link href={`/workouts/${item.id}`} asChild>
               <Pressable style={s.card}>
@@ -135,7 +135,7 @@ export default function WorkoutsScreen() {
         />
       </>
     );
-  }, [loading, error, items, total, refreshing]);
+  }, [loading, error, items, total, refreshing, onRefresh, s]);
 
   return (
     <SafeAreaView style={s.container} edges={["top", "bottom"]}>
@@ -165,9 +165,9 @@ export default function WorkoutsScreen() {
       {/* Contenu */}
       {listContent}
 
-      {/* Bouton flottant */}
+      {/* Bouton flottant toujours visible */}
       <Link href="/workouts/new" asChild>
-        <Pressable style={s.fab}>
+        <Pressable style={s.fab} accessibilityRole="button" accessibilityLabel="Créer un workout">
           <Ionicons name="add" size={28} color={theme.colors.onPrimary} />
         </Pressable>
       </Link>
@@ -236,6 +236,7 @@ const styles = StyleSheet.create({
     backgroundColor: theme.colors.bg,
     paddingHorizontal: layout.inset.x,
     paddingTop: layout.inset.y,
+    position: "relative",      // <-- pour que le FAB en position:absolute se réfère à cet écran
   },
   header: {
     flexDirection: "row",
@@ -330,7 +331,8 @@ const styles = StyleSheet.create({
     alignItems: "center",
     justifyContent: "center",
     backgroundColor: theme.colors.primary,
-    ...theme.shadow.card,
+    zIndex: 10,               // <-- garantie de passage au-dessus
+    ...theme.shadow.card,     // iOS shadow + Android elevation via ton token
   },
 
   center: { flex: 1, alignItems: "center", justifyContent: "center" },
