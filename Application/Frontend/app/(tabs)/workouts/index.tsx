@@ -20,6 +20,8 @@ import theme from "@/theme/colors";
 import layout from "@/theme/layout";
 import typography from "@/theme/typography";
 import { listWorkouts, type Workout } from "../../../src/lib/workouts";
+import { useBottomTabBarHeight } from "@react-navigation/bottom-tabs";
+
 
 // === Helpers semaine ===
 const daysLabels = ["Dim", "Lun", "Mar", "Mer", "Jeu", "Ven", "Sam"];
@@ -44,6 +46,8 @@ function isSameDay(a: Date, b: Date) {
 }
 
 export default function WorkoutsScreen() {
+  const tabBarHeight = useBottomTabBarHeight();
+
   const [items, setItems] = useState<Workout[]>([]);
   const [total, setTotal] = useState(0);
   const [loading, setLoading] = useState(true);
@@ -107,7 +111,9 @@ export default function WorkoutsScreen() {
           <Link href="/workouts/new" asChild>
             <Pressable style={s.ctaLarge}>
               <Ionicons name="add" size={18} color={theme.colors.onPrimary} />
-              <Text style={[s.ctaText, { marginLeft: 6 }]}>CRÉER UN WORKOUT</Text>
+              <Text style={[s.ctaText, { marginLeft: 6 }]}>
+                CREER UN WORKOUT
+              </Text>
             </Pressable>
           </Link>
         </View>
@@ -324,7 +330,6 @@ const styles = StyleSheet.create({
   fab: {
     position: "absolute",
     right: layout.inset.x,
-    bottom: layout.inset.y + 4,
     width: 56,
     height: 56,
     borderRadius: 28,

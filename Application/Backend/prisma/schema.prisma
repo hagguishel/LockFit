@@ -1,6 +1,3 @@
-// Fichier qui se connecte à la DB et transforme les modèles en tables.
-// Prisma s'en sert pour créer les tables ou les modifier.
-
 generator client {
   provider = "prisma-client-js"
   previewFeatures = ["driverAdapters"]
@@ -13,83 +10,65 @@ datasource db {
 }
 
 model Workout {
-  id         String    @id @default(cuid())
-  title      String
-  note       String?
-  finishedAt DateTime?
-
-  createdAt DateTime      @default(now())
-  updatedAt DateTime      @updatedAt
-  items     WorkoutItem[]
-
-  // back-relation vers PlanningJour
+  id           String         @id @default(cuid())
+  title        String
+  note         String?
+  createdAt    DateTime       @default(now())
+  updatedAt    DateTime       @updatedAt
+  finishedAt   DateTime?
   PlanningJour PlanningJour[]
+  items        WorkoutItem[]
 }
 
 model Planning {
-  id    String         @id @default(cuid())
-  nom   String
-  debut DateTime
-  fin   DateTime
-  jours PlanningJour[]
-
-  createdAt DateTime @default(now())
-  updatedAt DateTime @updatedAt
-}
-
-enum PlanningJourStatus {
-  PLANNED
-  DONE
+  id        String         @id @default(cuid())
+  nom       String
+  debut     DateTime
+  fin       DateTime
+  createdAt DateTime       @default(now())
+  updatedAt DateTime       @updatedAt
+  jours     PlanningJour[]
 }
 
 model PlanningJour {
-  id   String   @id @default(cuid())
-  date DateTime
-  note String?
-
-  // relations
-  planning   Planning @relation(fields: [planningId], references: [id], onDelete: Cascade)
+  id         String             @id @default(cuid())
+  date       DateTime
+  note       String?
   planningId String
+  workoutId  String
+  doneAt     DateTime?
+  status     PlanningJourStatus @default(PLANNED)
+  planning   Planning           @relation(fields: [planningId], references: [id], onDelete: Cascade)
+  workout    Workout            @relation(fields: [workoutId], references: [id])
 
-  workout   Workout @relation(fields: [workoutId], references: [id], onDelete: Restrict)
-  workoutId String
-
-  // suivi d'exécution
-  status PlanningJourStatus @default(PLANNED)
-  doneAt DateTime?
-
-  // empêcher le même Workout 2x le même jour dans un même planning
   @@unique([planningId, date, workoutId])
-  // index pour requêtes rapides par jour
   @@index([planningId, date])
 }
 
 model Utilisateur {
-  id         String   @id @default(cuid())
-  email      String   @unique
-  password   String
-  firstName  String
-  lastName   String
-  mfaEnabled Boolean  @default(false)
-  mfaSecret  String?
-  createdAt  DateTime @default(now())
-  updatedAt  DateTime @updatedAt
-
-  refreshTokens RefreshToken[]
+  id            String         @id @default(cuid())
+  email         String         @unique
+  password      String
+  firstName     String
+  lastName      String
+  mfaEnabled    Boolean        @default(false)
+  mfaSecret     String?
+  createdAt     DateTime       @default(now())
+  updatedAt     DateTime       @updatedAt
   MfaChallenge  MfaChallenge[]
+  refreshTokens RefreshToken[]
 }
 
 model RefreshToken {
-  id            String    @id @default(cuid())
+  id            String      @id @default(cuid())
   utilisateurId String
   tokenHash     String
-  jti           String    @unique //Jeton d'identifiant unique du token
-  expiresAt     DateTime //Date d'expiration du token
-  revoked       Boolean   @default(false)
-  createdAt     DateTime  @default(now())
+  revoked       Boolean     @default(false)
+  createdAt     DateTime    @default(now())
   revokedAt     DateTime?
-
-  utilisateur Utilisateur @relation(fields: [utilisateurId], references: [id])
+  expiresAt     DateTime
+  jti           String      @unique
+  utilisateur   Utilisateur @relation(fields: [utilisateurId], references: [id])
 
   @@index([utilisateurId, revoked])
   @@index([expiresAt])
@@ -98,37 +77,29 @@ model RefreshToken {
 
 /// Challenge MFA "code à 6 chiffre" envoyé à l'utilisateur (mail/SMS)
 model MfaChallenge {
-  id String @id @default(cuid())
-
-  ///L'utilisateur concerné (relation obligatoire)
+  id            String      @id @default(cuid())
+  /// L'utilisateur concerné (relation obligatoire)
   utilisateurId String
-  utilisateur   Utilisateur @relation(fields: [utilisateurId], references: [id], onDelete: Cascade)
-
   /// Liaison temporaire entre /auth/login (MFA requis) et /auth/mfa/verify
   /// Sert de "ticket" court, indépendant de l'ID utilisateur.
-  tempSessionId String @unique
-
+  tempSessionId String      @unique
   /// Code à 6 chiffres (ex: “123456”). On peut le stocker en clair côté dev ;
   /// en prod, tu peux hasher si tu veux pousser la sécurité (coût supplémentaire).
-  code String
-
+  code          String
   /// Validité du challenge (ex: now + 300s)
-  expiresAt DateTime
-
+  expiresAt     DateTime
   /// Indique si le challenge a été consommé (évite les replays)
-  used Boolean @default(false)
+  used          Boolean     @default(false)
+  createdAt     DateTime    @default(now())
+  utilisateur   Utilisateur @relation(fields: [utilisateurId], references: [id], onDelete: Cascade)
 
-  createdAt DateTime @default(now())
-
-  /// Index pour retrouver vite les challenges d’un utilisateur
   @@index([utilisateurId])
-  /// Index pour nettoyer (cron) les challenges expirés
   @@index([expiresAt])
 }
 
 model Exercise {
-  id              String   @id @default(cuid())
-  slug            String   @unique
+  id              String        @id @default(cuid())
+  slug            String        @unique
   name            String
   primaryMuscle   String
   secondaryMuscle String?
@@ -137,38 +108,40 @@ model Exercise {
   instructions    String?
   mediaUrl        String?
   source          String?
-  createdAt       DateTime @default(now())
-  updatedAt       DateTime @updatedAt
-
-  items WorkoutItem[]
+  createdAt       DateTime      @default(now())
+  updatedAt       DateTime      @updatedAt
+  items           WorkoutItem[]
 
   @@index([primaryMuscle])
   @@index([equipment])
 }
 
 model WorkoutItem {
-  id         String @id @default(cuid())
+  id         String       @id @default(cuid())
   order      Int
   workoutId  String
   exerciseId String
-
-  workout  Workout      @relation(fields: [workoutId], references: [id], onDelete: Cascade)
-  exercise Exercise     @relation(fields: [exerciseId], references: [id], onDelete: Restrict)
-  sets     WorkoutSet[]
+  exercise   Exercise     @relation(fields: [exerciseId], references: [id])
+  workout    Workout      @relation(fields: [workoutId], references: [id], onDelete: Cascade)
+  sets       WorkoutSet[]
 
   @@unique([workoutId, order])
   @@index([exerciseId])
 }
 
 model WorkoutSet {
-  id     String @id @default(cuid())
-  reps   Int
-  weight Float?
-  rest   Int?
-  rpe    Float?
-
+  id            String      @id @default(cuid())
+  reps          Int
+  weight        Float?
+  rest          Int?
+  rpe           Float?
   workoutItemId String
   item          WorkoutItem @relation(fields: [workoutItemId], references: [id], onDelete: Cascade)
 
   @@index([workoutItemId])
+}
+
+enum PlanningJourStatus {
+  PLANNED
+  DONE
 }

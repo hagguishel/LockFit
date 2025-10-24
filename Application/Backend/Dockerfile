@@ -18,6 +18,7 @@ RUN npm run build
 # 4) Nettoyer node_modules et réinstaller SEULEMENT prod
 RUN rm -rf node_modules && npm ci --omit=dev
 
+
 # ---- Étape runtime (légère) ----
 FROM node:20-alpine
 WORKDIR /app
@@ -25,20 +26,21 @@ WORKDIR /app
 # Outils légers (healthcheck, debugging)
 RUN apk add --no-cache curl
 
-# 1) Package files
+# 1) Package files (utile si ton entrypoint lit package.json, pas obligatoire mais safe)
 COPY package*.json ./
 
 # 2) node_modules prod-only depuis le build
 COPY --from=build /app/node_modules ./node_modules
 
-# 3) Artefacts compilés
+# 3) Artefacts compilés (NestJS transpile en dist/)
 COPY --from=build /app/dist ./dist
 
-# 4) Schémas Prisma (nécessaires pour le client)
+# 4) Schémas Prisma (nécessaires pour Prisma Client)
 COPY --from=build /app/prisma ./prisma
 
 # 5) Prisma Client généré
-COPY --from=build /app/node_modules/.prisma ./node_modules/.prisma
+# On ne copie PAS .prisma car il n'existe pas toujours dans l'image build Render
+# COPY --from=build /app/node_modules/.prisma ./node_modules/.prisma
 COPY --from=build /app/node_modules/@prisma ./node_modules/@prisma
 
 # 6) Entrypoint
@@ -46,9 +48,12 @@ COPY docker-entrypoint.sh ./docker-entrypoint.sh
 RUN chmod +x ./docker-entrypoint.sh
 
 ENV NODE_ENV=production
-EXPOSE 3000
 
+# IMPORTANT : le port exposé doit matcher ta variable PORT dans Render (3001)
+EXPOSE 3001
+
+# Healthcheck HTTP sur le bon port
 HEALTHCHECK --interval=30s --timeout=3s --start-period=40s \
-  CMD curl -f http://localhost:3000/api/v1/health || exit 1
+  CMD curl -f http://localhost:3001/api/v1/health || exit 1
 
 CMD ["./docker-entrypoint.sh"]
