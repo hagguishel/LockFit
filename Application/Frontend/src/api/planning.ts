@@ -1,5 +1,7 @@
 import { http } from "@/api/http";
 
+/* ============================== Types ============================== */
+
 export type PlanningJour = {
   id: string;
   date: string;
@@ -21,50 +23,42 @@ export type PlanningJour = {
 export type Planning = {
   id: string;
   nom: string;
-  debut: string;
-  fin: string;
+  debut: string; // YYYY-MM-DD
+  fin: string;   // YYYY-MM-DD
   createdAt: string;
   updatedAt: string;
   jours?: PlanningJour[];
 };
 
-/**
- * Liste tous les plannings
- * CORRECTION: listPlanning → listPlannings (pluriel pour cohérence)
- */
-export const listPlannings = () =>
-  http<{ items: Planning[]; total: number }>("/plannings");
+export type Paginated<T> = { items: T[]; total: number };
 
-/**
- * Récupère un planning spécifique par son ID
- */
-export const getPlanning = (id: string) =>
-  http<Planning>(`/plannings/${id}`);
+/* ============================== API =============================== */
 
-/**
- * Crée un nouveau planning
- */
+/** Liste des plannings (valeur par défaut sûre si 204/no content) */
+export const listPlannings = async (): Promise<Paginated<Planning>> => {
+  return (await http<Paginated<Planning>>("/plannings")) ?? { items: [], total: 0 };
+};
+
+/** Récupère un planning par ID */
+export const getPlanning = (id: string) => http<Planning>(`/plannings/${id}`);
+
+/** Crée un planning */
 export const createPlanning = (payload: {
   nom: string;
-  debut: string; // Format: YYYY-MM-DD
-  fin: string;   // Format: YYYY-MM-DD
-}) => http<Planning>("/plannings", {
-  method: "POST",
-  body: payload
-});
-/**
- * ajouter un jour au planning
- */
+  debut: string; // YYYY-MM-DD
+  fin: string;   // YYYY-MM-DD
+}) => http<Planning>("/plannings", { method: "POST", body: payload });
 
+/** Ajoute un jour à un planning */
 export const addPlanningDay = (
   planningId: string,
   payload: {
-    date: string;
+    date: string;      // YYYY-MM-DD
     workoutId: string;
     note?: string;
-   }
+  }
 ) =>
   http<PlanningJour>(`/plannings/${planningId}/jours`, {
     method: "POST",
     body: payload,
-});
+  });

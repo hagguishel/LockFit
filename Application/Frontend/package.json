@@ -4,11 +4,13 @@
   "private": true,
   "main": "expo-router/entry",
   "scripts": {
-    "start": "expo start",
+    "start": "expo start --clear --tunnel",
     "android": "expo start --android",
     "ios": "expo start --ios",
     "web": "expo start --web",
-    "doctor": "expo-doctor"
+    "doctor": "expo-doctor",
+    "start:lan": "EXPO_PACKAGER_HOSTNAME=$(hostname -I | awk '{print $1}') expo start --clear --host lan",
+    "start:tunnel": "expo start --clear --tunnel"
   },
   "engines": {
     "node": ">=20 <21",
@@ -23,7 +25,7 @@
     "@react-navigation/native-stack": "^7.3.27",
     "@tanstack/react-query": "^5.90.2",
     "axios": "^1.12.2",
-    "expo": "^54.0.13",
+    "expo": "~54.0.20",
     "expo-constants": "~18.0.9",
     "expo-linking": "~8.0.8",
     "expo-router": "~6.0.12",

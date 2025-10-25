@@ -1,90 +1,123 @@
-//Fichier qui sert à la création de l'entrainement
+// app/workouts/new.tsx
+// Écran de création d’un entraînement (POST /workouts)
 
-
-import { useState } from "react"; // Hooks React pour gérer l'état (title, saving)
-import { Alert, StyleSheet, Text, View, TextInput, Pressable } from "react-native"; // Composant de l'UI
-import { SafeAreaView } from "react-native-safe-area-context"; // Gère seul les zones "safe"
-import { Stack, useRouter } from "expo-router"; // Header + navigation
-import { createWorkout } from "../../../src/lib/workouts";    // Client API: POST /workouts
+import { useState } from "react";
+import { Alert, StyleSheet, Text, View, TextInput, Pressable, ActivityIndicator, Platform, KeyboardAvoidingView } from "react-native";
+import { SafeAreaView } from "react-native-safe-area-context";
+import { Stack, useRouter } from "expo-router";
+import { createWorkout } from "@/lib/workouts";            // ✅ alias @
+import { HttpError } from "@/api/http";                    // ✅ messages/status propres
+import theme from "@/theme/colors";                        // (optionnel) cohérence visuelle
+import layout from "@/theme/layout";
+import typography from "@/theme/typography";
 
 export default function NewWorkoutScreen() {
-  const router = useRouter();  //Hook navigation (Expo Router)
-  const [title, setTitle] = useState(""); // Champ nom de la séance
+  const router = useRouter();
+  const [title, setTitle] = useState("");
   const [saving, setSaving] = useState(false);
 
-  const handleCreate = async () => { // Fonction appelée au clic de "Créer"
-    const trimmed = title.trim(); // Enlève espaces inutiles
+  async function handleCreate() {
+    const trimmed = title.trim();
 
     if (!trimmed) {
       Alert.alert("Titre requis", "Merci d'indiquer un titre pour votre entraînement.");
       return;
     }
     if (trimmed.length > 50) {
-      Alert.alert("50 caractères maximum.");
+      Alert.alert("Titre trop long", "50 caractères maximum.");
       return;
     }
 
     try {
-      setSaving(true); //Désactive l'UI, en évitant les double clics
-      // ⬇️ On récupère l'objet créé (avec son id)
+      setSaving(true);
       const w = await createWorkout({ title: trimmed });
-      if (!w || !w.id) {
-        Alert.alert("Erreur",  "Réponse inattenduedu serveur (création sans id)");
+      if (!w?.id) {
+        Alert.alert("Erreur", "Réponse inattendue du serveur (création sans id).");
         return;
       }
-      setTitle(""); // Option: vider le champ
-      Alert.alert("Entraînement créé ✅", `Nom : "${trimmed}"`, [ //Feedback utilisateur (succès)
-        { text: "OK", onPress: () => router.replace(`/workouts/${w.id}`) }, //Puis on redirige ver l'autre écran
-      ]);
+      setTitle("");
+      // Redirection immédiate vers la fiche
+      router.replace(`/workouts/${w.id}`);
     } catch (e: any) {
-      Alert.alert("Erreur", e?.message || "Impossible de créer la séance."); //Gére erreur si jamais problèeme lors du back
+      if (e instanceof HttpError) {
+        Alert.alert("Erreur", `${e.status} — ${e.message}`);
+      } else {
+        Alert.alert("Erreur", e?.message || "Impossible de créer la séance.");
+      }
     } finally {
       setSaving(false);
     }
-  };
+  }
 
   return (
-    <SafeAreaView style={styles.container} edges={["top", "bottom"]}>
-      <Stack.Screen options={{ title: "Créer un entraînement" }} />
+    <SafeAreaView style={s.container} edges={["top", "bottom"]}>
+      <Stack.Screen options={{ title: "Créer un entraînement", headerShown: true }} />
 
-      <View style={styles.card}>
-        <Text style={styles.label}>Nom de la séance</Text>
-        <TextInput
-          value={title}
-          onChangeText={setTitle}
-          placeholder="Ex : Push Day, Pull Day, Legs…"
-          placeholderTextColor="#6B7280"
-          style={styles.input}
-          maxLength={50}
-          returnKeyType="done"
-          onSubmitEditing={handleCreate}
-        />
+      <KeyboardAvoidingView behavior={Platform.select({ ios: "padding", android: undefined })} style={{ flex: 1 }}>
+        <View style={s.card}>
+          <Text style={s.label}>Nom de la séance</Text>
+          <TextInput
+            value={title}
+            onChangeText={setTitle}
+            placeholder="Ex : Push Day, Pull Day, Legs…"
+            placeholderTextColor={theme.colors.muted}
+            style={s.input}
+            maxLength={50}
+            returnKeyType="done"
+            onSubmitEditing={handleCreate}
+            editable={!saving}
+          />
 
-        <Pressable style={[styles.cta, saving && { opacity: 0.6 }]} onPress={handleCreate} disabled={saving}>
-          <Text style={styles.ctaText}>{saving ? "Enregistrement…" : "Créer"}</Text>
-        </Pressable>
+          <Pressable style={[s.cta, saving && { opacity: 0.6 }]} onPress={handleCreate} disabled={saving}>
+            {saving ? <ActivityIndicator color={theme.colors.onPrimary} /> : <Text style={s.ctaText}>Créer</Text>}
+          </Pressable>
 
-        <Pressable style={styles.secondary} onPress={() => router.back()} disabled={saving}>
-          <Text style={styles.secondaryText}>Annuler</Text>
-        </Pressable>
-      </View>
+          <Pressable style={s.secondary} onPress={() => router.back()} disabled={saving}>
+            <Text style={s.secondaryText}>Annuler</Text>
+          </Pressable>
+        </View>
+      </KeyboardAvoidingView>
     </SafeAreaView>
   );
 }
 
-const styles = StyleSheet.create({
-  container: { flex: 1, backgroundColor: "#0F1420", padding: 16 },
+const s = StyleSheet.create({
+  container: { flex: 1, backgroundColor: theme.colors.bg, padding: layout.inset.x },
   card: {
-    borderWidth: 1, borderColor: "#232A3A", backgroundColor: "#121927",
-    borderRadius: 16, padding: 16, gap: 12,
+    borderWidth: 1,
+    borderColor: theme.colors.border,
+    backgroundColor: theme.colors.surface,
+    borderRadius: layout.radius.lg,
+    padding: layout.gap.lg,
+    gap: layout.gap.sm,
+    ...theme.shadow.card,
   },
-  label: { color: "#12E29A", fontWeight: "600", marginBottom: 4 },
+  label: {
+    fontSize: 14,
+    lineHeight: 18,
+    fontWeight: "600",
+    color: theme.colors.primary,
+    marginBottom: 4,
+  },
   input: {
-    borderWidth: 1, borderColor: "#232A3A", backgroundColor: "#0F1420",
-    color: "#E6F0FF", borderRadius: 12, paddingHorizontal: 12, paddingVertical: 10,
+    borderWidth: 1,
+    borderColor: theme.colors.border,
+    backgroundColor: theme.colors.bg,
+    color: theme.colors.text,
+    borderRadius: layout.radius.md,
+    paddingHorizontal: layout.gap.md,
+    paddingVertical: layout.gap.sm,
+    fontSize: 16,
   },
-  cta: { backgroundColor: "#12E29A", paddingVertical: 12, borderRadius: 12, alignItems: "center", marginTop: 8 },
-  ctaText: { color: "#061018", fontWeight: "700" },
-  secondary: { paddingVertical: 10, borderRadius: 12, alignItems: "center" },
-  secondaryText: { color: "#98A2B3", fontWeight: "600" },
+  cta: {
+    backgroundColor: theme.colors.primary,
+    paddingVertical: layout.gap.md,
+    borderRadius: layout.radius.md,
+    alignItems: "center",
+    justifyContent: "center",
+    marginTop: layout.gap.sm,
+  },
+  ctaText: { ...typography.cta, color: theme.colors.onPrimary },
+  secondary: { paddingVertical: layout.gap.sm, borderRadius: layout.radius.md, alignItems: "center" },
+  secondaryText: { color: theme.colors.muted, fontWeight: "600" },
 });

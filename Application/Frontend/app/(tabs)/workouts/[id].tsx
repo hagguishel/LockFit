@@ -1,3 +1,5 @@
+// app/workouts/[id].tsx
+
 import { useCallback, useEffect, useMemo, useState } from "react";
 import {
   ActivityIndicator,
@@ -12,7 +14,14 @@ import {
 } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
 import { Stack, useLocalSearchParams, useFocusEffect, useRouter } from "expo-router";
-import { getWorkout, finishWorkout, type Workout, addWorkoutItem } from "../../../src/lib/workouts";
+
+import {
+  getWorkout,
+  finishWorkout,
+  addWorkoutItem,
+  type Workout,
+} from "@/lib/workouts";
+import { HttpError } from "@/api/http";
 
 export default function WorkoutDetailScreen() {
   const { id } = useLocalSearchParams<{ id: string }>();
@@ -22,59 +31,65 @@ export default function WorkoutDetailScreen() {
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
   const [finishing, setFinishing] = useState(false);
+
+  // form “add item”
   const [exId, setExId] = useState("");
   const [reps, setReps] = useState("10");
   const [weight, setWeight] = useState("");
   const [rest, setRest] = useState("");
   const [adding, setAdding] = useState(false);
+
+  // progression locale par set
   const [doneSets, setDoneSets] = useState<Record<string, Set<number>>>({});
 
-  const keyFor = useCallback((exerciseId: string, order: number) =>
-    `${exerciseId}-${order}`, []
+  const keyFor = useCallback((exerciseId: string, order: number) => `${exerciseId}-${order}`, []);
+
+  const toggleSet = useCallback(
+    (exerciseId: string, order: number, setIndex: number) => {
+      const k = keyFor(exerciseId, order);
+      setDoneSets((prev) => {
+        const copy = { ...prev };
+        const s = new Set(copy[k] ?? []);
+        s.has(setIndex) ? s.delete(setIndex) : s.add(setIndex);
+        copy[k] = s;
+        return copy;
+      });
+    },
+    [keyFor]
   );
 
-  const toggleSet = useCallback((exerciseId: string, order: number, setIndex: number) => {
-    const k = keyFor(exerciseId, order);
-    setDoneSets(prev => {
-      const copy = { ...prev };
-      const s = new Set(copy[k] ?? []);
-      if (s.has(setIndex)) {
-        s.delete(setIndex);
-      } else {
-        s.add(setIndex);
+  const nextSet = useCallback(
+    (exerciseId: string, order: number, totalSets: number) => {
+      const k = keyFor(exerciseId, order);
+      const s = doneSets[k] ?? new Set<number>();
+      const next = [...Array(totalSets).keys()].find((i) => !s.has(i));
+      if (next !== undefined) {
+        toggleSet(exerciseId, order, next);
       }
-      copy[k] = s;
-      return copy;
-    });
-  }, [keyFor]);
-
-  const nextSet = useCallback((exerciseId: string, order: number, totalSets: number) => {
-    const k = keyFor(exerciseId, order);
-    const s = doneSets[k] ?? new Set<number>();
-    const next = [...Array(totalSets).keys()].find(i => !s.has(i));
-    if (next !== undefined) {
-      toggleSet(exerciseId, order, next);
-    }
-  }, [doneSets, keyFor, toggleSet]);
+    },
+    [doneSets, keyFor, toggleSet]
+  );
 
   const load = useCallback(async () => {
+    if (!id) return;
     try {
       setLoading(true);
       const res = await getWorkout(String(id));
       setData(res);
     } catch (e: any) {
-      Alert.alert("Erreur", e?.message || "Chargement impossible");
+      if (e instanceof HttpError) Alert.alert("Erreur", `${e.status} — ${e.message}`);
+      else Alert.alert("Erreur", e?.message || "Chargement impossible");
     } finally {
       setLoading(false);
     }
   }, [id]);
 
-  // Chargement initial
+  // initial
   useEffect(() => {
     load();
   }, [load]);
 
-  // Recharge quand on revient sur l'écran
+  // re-load on focus
   useFocusEffect(
     useCallback(() => {
       load();
@@ -90,7 +105,7 @@ export default function WorkoutDetailScreen() {
   const onFinish = useCallback(async () => {
     if (!data || data.finishedAt) return;
 
-    // Optimiste: on marque terminé localement
+    // optimiste
     setFinishing(true);
     const previous = data;
     setData({ ...data, finishedAt: new Date().toISOString() });
@@ -99,70 +114,71 @@ export default function WorkoutDetailScreen() {
       await finishWorkout(String(id));
       Alert.alert("Séance terminée ✅");
     } catch (e: any) {
-      // Rollback si échec
-      setData(previous);
-      Alert.alert("Erreur", e?.message || "Impossible de terminer");
+      setData(previous); // rollback
+      if (e instanceof HttpError) Alert.alert("Erreur", `${e.status} — ${e.message}`);
+      else Alert.alert("Erreur", e?.message || "Impossible de terminer");
     } finally {
       setFinishing(false);
     }
   }, [data, id]);
 
-  const onAddItem = useCallback(async () => {
-    const exerciseId = exId.trim();
-    const r = Number(reps);
-    const wkg = weight ? Number(weight) : undefined;
-    const rs = rest ? Number(rest) : undefined;
+  const onAddItem = useCallback(
+    async () => {
+      const exerciseId = exId.trim();
+      const r = Number(reps);
+      const wkg = weight.trim() ? Number(weight) : undefined;
+      const rs = rest.trim() ? Number(rest) : undefined;
 
-    if (!exerciseId) {
-      Alert.alert("Exercice requis", "Renseigne un exerciseId.");
-      return;
-    }
-
-    if (!Number.isFinite(r) || r <= 0) {
-      Alert.alert("Série", "Indique un nombre de répétitions valide (> 0).");
-      return;
-    }
-
-    try {
-      setAdding(true);
-      const updated = await addWorkoutItem(String(id), {
-        exerciseId,
-        reps: r,
-        weight: wkg,
-        rest: rs,
-      });
-      console.log(updated.items)
-      // Si le back ne renvoie pas les items complets, on refetch
-      if (!updated?.items || !Array.isArray(updated.items)) {
-        await load();
-      } else {
-        setData(updated);
-        console.log(data);
+      if (!exerciseId) {
+        Alert.alert("Exercice requis", "Renseigne un exerciseId.");
+        return;
+      }
+      if (!Number.isFinite(r) || r <= 0) {
+        Alert.alert("Série", "Indique un nombre de répétitions valide (> 0).");
+        return;
       }
 
-      // Reset du formulaire
-      setExId("");
-      setReps("10");
-      setWeight("");
-      setRest("");
+      try {
+        setAdding(true);
+        const updated = await addWorkoutItem(String(id), {
+          exerciseId,
+          reps: r,
+          weight: wkg,
+          rest: rs,
+        });
 
-      Alert.alert("OK", "Exercice ajouté.");
-    } catch (e: any) {
-      Alert.alert("Erreur", e?.message || "Impossible d'ajouter l'exercice.");
-    } finally {
-      setAdding(false);
-    }
-  }, [exId, reps, weight, rest, id, load]);
+        // si le back ne renvoie pas les items complets, on refetch
+        if (!updated?.items || !Array.isArray(updated.items)) {
+          await load();
+        } else {
+          setData(updated);
+        }
+
+        // reset form
+        setExId("");
+        setReps("10");
+        setWeight("");
+        setRest("");
+
+        Alert.alert("OK", "Exercice ajouté.");
+      } catch (e: any) {
+        if (e instanceof HttpError) Alert.alert("Erreur", `${e.status} — ${e.message}`);
+        else Alert.alert("Erreur", e?.message || "Impossible d'ajouter l'exercice.");
+      } finally {
+        setAdding(false);
+      }
+    },
+    [exId, reps, weight, rest, id, load]
+  );
 
   const title = data?.title || "Séance";
-
   const finishedAtText = useMemo(() => {
     if (!data?.finishedAt) return "🕓 En cours";
     const d = new Date(data.finishedAt);
     return `✅ Terminée le ${d.toLocaleDateString()} ${d.toLocaleTimeString()}`;
   }, [data?.finishedAt]);
 
-  const hasItems = (data?.items?.length ?? 0) > 0;
+  const items = useMemo(() => data?.items ?? [], [data]);
 
   if (loading && !data) {
     return (
@@ -188,25 +204,22 @@ export default function WorkoutDetailScreen() {
 
         {/* Actions */}
         {!data?.finishedAt && (
-          <Pressable
-            style={[s.cta, finishing && { opacity: 0.6 }]}
-            onPress={onFinish}
-            disabled={finishing}
-          >
-            <Text style={s.ctaText}>
-              {finishing ? "Validation…" : "Marquer terminé"}
-            </Text>
+          <Pressable style={[s.cta, finishing && { opacity: 0.6 }]} onPress={onFinish} disabled={finishing}>
+            <Text style={s.ctaText}>{finishing ? "Validation…" : "Marquer terminé"}</Text>
           </Pressable>
         )}
 
         {/* Liste des exercices */}
+        <View style={s.card}>
+          <Text style={s.sectionTitle}>Exercices</Text>
 
-          <View style={s.card}>
-            <Text style={s.sectionTitle}>Exercices</Text>
-
-            {data!.items!.map((it, idx) => {
+          {items.length === 0 ? (
+            <Text style={{ color: "#98A2B3" }}>Aucun exercice.</Text>
+          ) : (
+            items.map((it, idx) => {
               const k = keyFor(it.exerciseId, it.order);
               const done = doneSets[k] ?? new Set<number>();
+              const sets = it.sets ?? [];
 
               return (
                 <View key={`${it.exerciseId}-${it.order}-${idx}`} style={s.exerciseItem}>
@@ -215,11 +228,11 @@ export default function WorkoutDetailScreen() {
                       #{it.order} - {it.exerciseId}
                     </Text>
                     <Text style={s.progressText}>
-                      {done.size}/{it.sets?.length ?? 0}
+                      {done.size}/{sets.length}
                     </Text>
                   </View>
 
-                  {(it.sets || []).map((set, i) => {
+                  {sets.map((set, i) => {
                     const isDone = done.has(i);
                     const isDisabled = !!data?.finishedAt;
                     return (
@@ -239,10 +252,9 @@ export default function WorkoutDetailScreen() {
                     );
                   })}
 
-                  {/* Bouton "valider le prochain set" */}
-                  {(it.sets?.length ?? 0) > 0 && !data?.finishedAt && (
+                  {sets.length > 0 && !data?.finishedAt && (
                     <Pressable
-                      onPress={() => nextSet(it.exerciseId, it.order, it.sets!.length)}
+                      onPress={() => nextSet(it.exerciseId, it.order, sets.length)}
                       style={s.nextSetBtn}
                     >
                       <Text style={s.ctaText}>Valider le prochain set</Text>
@@ -250,19 +262,19 @@ export default function WorkoutDetailScreen() {
                   )}
                 </View>
               );
-            })}
-          </View>
-
+            })
+          )}
+        </View>
 
         {/* Formulaire d'ajout d'exercice */}
         <View style={s.card}>
           <Text style={s.sectionTitle}>+ Ajouter un exercice</Text>
 
-          <Text style={s.label}>Titre de l'exercice</Text>
+          <Text style={s.label}>exerciseId</Text>
           <TextInput
             value={exId}
             onChangeText={setExId}
-            placeholder="ex: bench"
+            placeholder="ex: ex_123"
             placeholderTextColor="#6B7280"
             style={s.input}
             autoCapitalize="none"
@@ -307,19 +319,15 @@ export default function WorkoutDetailScreen() {
             onPress={onAddItem}
             disabled={adding || !!data?.finishedAt}
           >
-            <Text style={s.ctaText}>
-              {adding ? "Ajout…" : "Ajouter l'exercice"}
-            </Text>
+            <Text style={s.ctaText}>{adding ? "Ajout…" : "Ajouter l'exercice"}</Text>
           </Pressable>
 
           {!!data?.finishedAt && (
-            <Text style={s.disabledText}>
-              La séance est terminée — ajout désactivé.
-            </Text>
+            <Text style={s.disabledText}>La séance est terminée — ajout désactivé.</Text>
           )}
         </View>
 
-        {/* Bouton réinitialiser la progression */}
+        {/* Reset progression */}
         {Object.keys(doneSets).length > 0 && !data?.finishedAt && (
           <Pressable
             onPress={() => {
@@ -328,19 +336,17 @@ export default function WorkoutDetailScreen() {
                 "Es-tu sûr de vouloir réinitialiser toutes les séries validées ?",
                 [
                   { text: "Annuler", style: "cancel" },
-                  { text: "Réinitialiser", onPress: () => setDoneSets({}), style: "destructive" }
+                  { text: "Réinitialiser", onPress: () => setDoneSets({}), style: "destructive" },
                 ]
               );
             }}
             style={[s.secondary, { marginBottom: 8 }]}
           >
-            <Text style={[s.secondaryText, { color: "#EF4444" }]}>
-              Réinitialiser la progression
-            </Text>
+            <Text style={[s.secondaryText, { color: "#EF4444" }]}>Réinitialiser la progression</Text>
           </Pressable>
         )}
 
-        {/* Bouton retour */}
+        {/* Retour */}
         <Pressable style={s.secondary} onPress={() => router.back()}>
           <Text style={s.secondaryText}>Retour</Text>
         </Pressable>

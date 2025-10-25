@@ -1,11 +1,11 @@
 // app/workouts/index.tsx
 // 🏋️ Onglet "Mes entraînements"
 // Étape 1 : UI fidèle au Figma + palette & layout LockFit
-// Back non filtré (on branchera /workouts?from&to à l'étape 2)
+// Étape 2 : filtre semaine via /workouts?from=YYYY-MM-DD&to=YYYY-MM-DD
 
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { SafeAreaView } from "react-native-safe-area-context";
-import { Link, Stack, useFocusEffect } from "expo-router";
+import { Link, Stack, useFocusEffect, useRouter } from "expo-router";
 import {
   ActivityIndicator,
   FlatList,
@@ -19,9 +19,10 @@ import { Ionicons } from "@expo/vector-icons";
 import theme from "@/theme/colors";
 import layout from "@/theme/layout";
 import typography from "@/theme/typography";
-import { listWorkouts, type Workout } from "../../../src/lib/workouts";
+import { listWorkouts, type Workout } from "@/lib/workouts"; // ✅ alias @
 import { useBottomTabBarHeight } from "@react-navigation/bottom-tabs";
-
+import { HttpError } from "@/api/http"; // ✅ message/status propres
+import { clearTokens } from "@/lib/tokenStorage"; // ✅ logout
 
 // === Helpers semaine ===
 const daysLabels = ["Dim", "Lun", "Mar", "Mer", "Jeu", "Ven", "Sam"];
@@ -44,9 +45,17 @@ function isSameDay(a: Date, b: Date) {
     a.getDate() === b.getDate()
   );
 }
+// YYYY-MM-DD sans timezone
+function fmtDate(d: Date) {
+  const y = d.getFullYear();
+  const m = String(d.getMonth() + 1).padStart(2, "0");
+  const day = String(d.getDate()).padStart(2, "0");
+  return `${y}-${m}-${day}`;
+}
 
 export default function WorkoutsScreen() {
   const tabBarHeight = useBottomTabBarHeight();
+  const router = useRouter();
 
   const [items, setItems] = useState<Workout[]>([]);
   const [total, setTotal] = useState(0);
@@ -61,30 +70,61 @@ export default function WorkoutsScreen() {
     try {
       setError(null);
       setLoading(true);
-      const res = await listWorkouts();
-      setItems(res.items);
-      setTotal(res.total ?? res.items.length);
+
+      // fenêtre de la semaine [weekStart .. weekStart+6]
+      const from = fmtDate(weekStart);
+      const to = fmtDate(addDays(weekStart, 6));
+
+      const res = await listWorkouts({ from, to });
+      setItems(res.items ?? []);
+      setTotal(res.total ?? (res.items?.length ?? 0));
     } catch (e: any) {
-      setError(e?.message || "Erreur de chargement");
+      if (e instanceof HttpError) setError(`${e.status} — ${e.message}`);
+      else setError(e?.message || "Erreur de chargement");
     } finally {
       setLoading(false);
     }
-  }, []);
+  }, [weekStart]);
 
-  useEffect(() => { load(); }, [load]);
-  useFocusEffect(useCallback(() => { load(); }, [load]));
+  // recharge sur focus
+  useFocusEffect(
+    useCallback(() => {
+      load();
+    }, [load])
+  );
+
+  // recharge quand la semaine change via les flèches
+  useEffect(() => {
+    load();
+  }, [load, weekStart]);
 
   const onRefresh = useCallback(async () => {
     setRefreshing(true);
-    await load();
-    setRefreshing(false);
+    try {
+      await load();
+    } finally {
+      setRefreshing(false);
+    }
   }, [load]);
+
+  // Logout
+  const onLogout = useCallback(async () => {
+    try {
+      await clearTokens();
+    } finally {
+      router.replace("/auth/login");
+    }
+  }, [router]);
 
   const s = styles;
 
   const listContent = useMemo(() => {
     if (loading) {
-      return <View style={s.center}><ActivityIndicator /></View>;
+      return (
+        <View style={s.center}>
+          <ActivityIndicator />
+        </View>
+      );
     }
     if (error) {
       return (
@@ -111,9 +151,7 @@ export default function WorkoutsScreen() {
           <Link href="/workouts/new" asChild>
             <Pressable style={s.ctaLarge}>
               <Ionicons name="add" size={18} color={theme.colors.onPrimary} />
-              <Text style={[s.ctaText, { marginLeft: 6 }]}>
-                CREER UN WORKOUT
-              </Text>
+              <Text style={[s.ctaText, { marginLeft: 6 }]}>CREER UN WORKOUT</Text>
             </Pressable>
           </Link>
         </View>
@@ -124,9 +162,12 @@ export default function WorkoutsScreen() {
         <Text style={s.sectionTitle}>Workouts du jour</Text>
         <FlatList
           data={items}
-          keyExtractor={(w) => w.id}
+          keyExtractor={(w) => String(w.id)}
           refreshControl={<RefreshControl refreshing={refreshing} onRefresh={onRefresh} />}
-          contentContainerStyle={{ gap: layout.gap.md, paddingBottom: 128 }} // évite que le FAB masque le dernier item
+          contentContainerStyle={{
+            gap: layout.gap.md,
+            paddingBottom: 128, // évite que le FAB masque le dernier item
+          }}
           renderItem={({ item }) => (
             <Link href={`/workouts/${item.id}`} asChild>
               <Pressable style={s.card}>
@@ -141,7 +182,7 @@ export default function WorkoutsScreen() {
         />
       </>
     );
-  }, [loading, error, items, total, refreshing, onRefresh, s]);
+  }, [loading, error, items, total, refreshing, onRefresh, s, load]);
 
   return (
     <SafeAreaView style={s.container} edges={["top", "bottom"]}>
@@ -150,11 +191,17 @@ export default function WorkoutsScreen() {
       {/* Header */}
       <View style={s.header}>
         <Text style={s.title}>Mes entraînements</Text>
-        <Link href="/calendar" asChild>
-          <Pressable style={s.iconBtn}>
-            <Ionicons name="calendar-outline" size={20} color={theme.colors.text} />
+        <View style={{ flexDirection: "row", gap: 8 }}>
+          <Link href="/calendar" asChild>
+            <Pressable style={s.iconBtn}>
+              <Ionicons name="calendar-outline" size={20} color={theme.colors.text} />
+            </Pressable>
+          </Link>
+          {/* Logout */}
+          <Pressable style={s.iconBtn} onPress={onLogout} accessibilityLabel="Se déconnecter">
+            <Ionicons name="power-outline" size={20} color={theme.colors.danger ?? "#ef4444"} />
           </Pressable>
-        </Link>
+        </View>
       </View>
 
       {/* Bandeau semaine */}
@@ -215,12 +262,7 @@ function WeekStrip({
                   active && { backgroundColor: theme.colors.primary },
                 ]}
               />
-              <Text
-                style={[
-                  s.dayLabel,
-                  active && { color: theme.colors.text },
-                ]}
-              >
+              <Text style={[s.dayLabel, active && { color: theme.colors.text }]}>
                 {daysLabels[i]}
               </Text>
             </Pressable>
@@ -242,7 +284,7 @@ const styles = StyleSheet.create({
     backgroundColor: theme.colors.bg,
     paddingHorizontal: layout.inset.x,
     paddingTop: layout.inset.y,
-    position: "relative",      // <-- pour que le FAB en position:absolute se réfère à cet écran
+    position: "relative", // pour que le FAB en position:absolute se réfère à cet écran
   },
   header: {
     flexDirection: "row",
@@ -336,8 +378,8 @@ const styles = StyleSheet.create({
     alignItems: "center",
     justifyContent: "center",
     backgroundColor: theme.colors.primary,
-    zIndex: 10,               // <-- garantie de passage au-dessus
-    ...theme.shadow.card,     // iOS shadow + Android elevation via ton token
+    zIndex: 10, // passe au-dessus
+    ...theme.shadow.card,
   },
 
   center: { flex: 1, alignItems: "center", justifyContent: "center" },

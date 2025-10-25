@@ -1,23 +1,30 @@
-// http.ts — centralise la construction d’URL, les en-têtes, la sérialisation JSON et la gestion des erreurs
+// src/api/http.ts
+// centralise la construction d’URL, les en-têtes, la sérialisation JSON et la gestion des erreurs
 
 // =======================================================
 // 🌐 Configuration de base de l'API
 // =======================================================
+// EXPO_PUBLIC_API_URL peut être:
+//   - https://lockfit.onrender.com
+//   - https://lockfit.onrender.com/api/v1
 const RAW_BASE = process.env.EXPO_PUBLIC_API_URL ?? "";
-export const CLEAN_BASE = RAW_BASE.trim().replace(/\/+$/, ""); // on retire les / en fin d’URL
+const CLEAN_BASE = RAW_BASE.trim().replace(/\/+$/, ""); // retire les / finaux
+
 if (!CLEAN_BASE) {
-  // Sur téléphone réel, on DOIT fournir EXPO_PUBLIC_API_URL (tunnel HTTPS conseillé)
+  // Sur téléphone réel, fournir EXPO_PUBLIC_API_URL (HTTPS conseillé)
   throw new Error(
-    "EXPO_PUBLIC_API_URL manquant (ex: https://<ton-tunnel>.trycloudflare.com/api/v1)"
+    "EXPO_PUBLIC_API_URL manquant (ex: https://lockfit.onrender.com ou https://lockfit.onrender.com/api/v1)"
   );
 }
 
-export const API_BASE = `${CLEAN_BASE}/api/v1`;
+// Si l'URL finit déjà par /api/v1, on la garde telle quelle; sinon on l'ajoute.
+const API_BASE =
+  /\/api\/v1$/i.test(CLEAN_BASE) ? CLEAN_BASE : `${CLEAN_BASE}/api/v1`;
 
-// Petit helper pour assembler l’URL finale sans // doublons
+// Petit helper pour assembler l’URL finale sans // doublons (conserve https://)
 function buildUrl(path: string): string {
   const p = path.startsWith("/") ? path : `/${path}`;
-  return `${API_BASE}${p}`.replace(/(?<!:)\/{2,}/g, "/"); // garde 'https://' intact
+  return `${API_BASE}${p}`.replace(/(?<!:)\/{2,}/g, "/");
 }
 
 // =======================================================
@@ -28,10 +35,9 @@ export type HttpOptions = {
   body?: any;
   signal?: AbortSignal | null;
   headers?: Record<string, string>;
-  timeoutMs?: number;      // ⏱️ annule auto si trop long (par défaut 20s)
-  token?: string | null;   // 🔐 JWT si besoin → Authorization: Bearer <token>
-
-  _retry?: boolean;        // [AJOUT] interne: marqueur pour savoir si on a déjà retenté après un refresh (évite la boucle)
+  timeoutMs?: number; // ⏱️ annule auto si trop long (par défaut 20s)
+  token?: string | null; // 🔐 JWT si besoin → Authorization: Bearer <token>
+  _retry?: boolean; // interne: a-t-on déjà retenté après un refresh ?
 };
 
 // =======================================================
@@ -51,48 +57,47 @@ export class HttpError extends Error {
 
 // ========================== gestion des tokens & refresh ==========================
 // On réutilise TON stockage sécurisé existant
-import { loadTokens, saveTokens, clearTokens } from "../lib/tokenStorage"; //  on lit/sauve/efface access+refresh
+import { loadTokens, saveTokens, clearTokens } from "../lib/tokenStorage";
 
-let refreshing = false;        //  drapeau: un refresh est-il déjà en cours ?
-let waiters: Array<() => void> = []; //  liste d'attente: les requêtes attendent que le refresh finisse
+let refreshing = false;
+let waiters: Array<() => void> = [];
 
-/**  Tente de renouveler l'access token via le refresh token. Retourne true si OK. */
+/** Tente de renouveler l'access token via le refresh token. Retourne true si OK. */
 async function tryRefreshOnce(): Promise<boolean> {
-  if (refreshing) {                          //  si un refresh est déjà en cours
-    await new Promise<void>((resolve) => waiters.push(resolve)); // on attend gentiment la fin
-    return true;                              // on considère le refresh “géré” (réussi ou pas, l’appelant verra)
+  if (refreshing) {
+    await new Promise<void>((resolve) => waiters.push(resolve));
+    return true; // on considère le refresh “géré” (réussi ou pas, l’appelant verra)
   }
 
-  refreshing = true;                          // on passe en mode "refresh en cours"
+  refreshing = true;
   try {
-    const tokens = await loadTokens();        // on récupère le refresh token stocké
+    const tokens = await loadTokens();
     const refresh = tokens?.refresh;
-    if (!refresh) return false;               //  pas de refresh => impossible de renouveler
+    if (!refresh) return false;
 
-    const resp = await fetch(buildUrl("/auth/refresh"), { // appelle l’endpoint /auth/refresh de ton back
+    const resp = await fetch(buildUrl("/auth/refresh"), {
       method: "POST",
-      headers: { Authorization: `Bearer ${refresh}` },    // ton back attend le refresh en Authorization
+      headers: { Authorization: `Bearer ${refresh}` },
     });
 
-    if (!resp.ok) return false;               // si le back refuse, on s’arrête
+    if (!resp.ok) return false;
 
-    const data = await resp.json();           //  on récupère la nouvelle paire
+    const data = await resp.json().catch(() => null);
     const accessToken = (data as any)?.accessToken;
     const refreshToken = (data as any)?.refreshToken;
-    if (!accessToken || !refreshToken) return false; // sécurité: on vérifie qu’on a bien les 2
+    if (!accessToken || !refreshToken) return false;
 
-    await saveTokens({ access: accessToken, refresh: refreshToken }); // on met à jour le coffre
-    return true;                                //  refresh OK
+    await saveTokens({ access: accessToken, refresh: refreshToken });
+    return true;
   } catch {
-    return false;                               //  en cas d’erreur réseau/parsing: échec
+    return false;
   } finally {
-    refreshing = false;                         //  fin du refresh (réussi ou pas)
-    waiters.forEach((w) => w());                //  on réveille ceux qui attendaient
-    waiters = [];                               //  on vide la file d’attente
+    refreshing = false;
+    waiters.forEach((w) => w());
+    waiters = [];
   }
 }
 // ======================== FIN  gestion des tokens & refresh ========================
-
 
 // =======================================================
 // 🚀 Fonction principale http()
@@ -109,8 +114,8 @@ export async function http<T = unknown>(
     signal: externalSignal = null,
     headers: extraHeaders,
     timeoutMs = 20000,
-    token = null,           // 🔐 si un token est passé manuellement, on l’utilise tel quel
-    _retry = false,         //  interne: déjà retenté après refresh ?
+    token = null,
+    _retry = false,
   } = opts;
 
   const headers: Record<string, string> = {
@@ -119,14 +124,14 @@ export async function http<T = unknown>(
     ...(extraHeaders ?? {}),
   };
 
-  //  Si aucun token explicite n’est fourni, on essaie d’ajouter automatiquement l’access token stocké
+  // Ajout auto de l'access token si aucun token explicite n’est fourni
   if (!token) {
-    const stored = await loadTokens();                    //  lit { access, refresh } depuis SecureStore
-    if (stored?.access && !headers["Authorization"]) {    //  si on a un access, on le met dans l’en-tête
+    const stored = await loadTokens();
+    if (stored?.access && !headers["Authorization"]) {
       headers["Authorization"] = `Bearer ${stored.access}`;
     }
   } else {
-    headers["Authorization"] = `Bearer ${token}`;         //  priorité au token fourni via les options
+    headers["Authorization"] = `Bearer ${token}`;
   }
 
   const init: RequestInit = {
@@ -134,37 +139,33 @@ export async function http<T = unknown>(
     headers,
   };
 
-  // 🚫 Pas de body pour GET
+  // 🚫 Pas de body pour GET — et ne stringify que si nécessaire
   if (body !== undefined && body !== null && method !== "GET") {
-  // 🔧 Correction: ne JSON.stringify que si c'est un objet.
-  // Si c'est déjà une string (ou FormData/Blob), on n'y touche pas.
-  init.body =
-    typeof body === "string" || body instanceof FormData || body instanceof Blob
-      ? body
-      : JSON.stringify(body);
-}
+    // si déjà string/FormData/Blob -> on n’y touche pas
+    const isString = typeof body === "string";
+    const isFormData = typeof FormData !== "undefined" && body instanceof FormData;
+    const isBlob = typeof Blob !== "undefined" && body instanceof Blob;
+    init.body = isString || isFormData || isBlob ? body : JSON.stringify(body);
+  }
 
   // ⏱️ Timeout + annulation
   const controller = !externalSignal ? new AbortController() : null;
-  const combinedSignal = externalSignal ?? controller?.signal ?? null;
+  const combinedSignal = externalSignal ?? controller?.signal ?? undefined;
   if (combinedSignal) init.signal = combinedSignal;
 
   const timer = controller ? setTimeout(() => controller.abort(), timeoutMs) : null;
 
   let res: Response;
   try {
-    // Debug utile (tu peux commenter si bruyant)
-    // console.log("HTTP:", method, url);
     res = await fetch(url, init);
   } catch (e: any) {
     if (timer) clearTimeout(timer);
-    // Erreur réseau (API down, mauvaise URL, HTTP clair bloqué, DNS tunnel, etc.)
     const hint = [
       `Échec réseau vers ${url}`,
       `Vérifie :`,
-      `• Le tunnel HTTPS est bien actif (cloudflared en cours d’exécution)`,
-      `• L’URL dans .env (EXPO_PUBLIC_API_URL) est exacte et finit par /api/v1`,
-      `• Android ≥ 9/iOS bloquent souvent le HTTP clair → utilise HTTPS`,
+      `• Le tunnel/HTTPS Render ou cloudflared est actif`,
+      `• EXPO_PUBLIC_API_URL est correcte (avec ou sans /api/v1)`,
+      `• Sur device réel, évite http:// → préfère https://`,
     ].join("\n");
     throw new Error(`${e?.message || String(e)}\n${hint}`);
   } finally {
@@ -172,58 +173,75 @@ export async function http<T = unknown>(
   }
 
   const contentType = res.headers.get("content-type") || "";
-  const isJson = contentType.includes("application/json");
+  const isJson = /\bapplication\/json\b/i.test(contentType);
   const hasBody = res.status !== 204 && res.status !== 205;
 
   let data: any = null;
-  if (hasBody && isJson) {
-    try {
-      data = await res.json();
-    } catch {
-      data = null;
+  if (hasBody) {
+    if (isJson) {
+      data = await res.json().catch(() => null);
+    } else {
+      // on tente de lire le texte (utile pour 4xx HTML, etc.) sans casser l’API
+      data = await res.text().catch(() => null);
+      try {
+        // parfois c’est du JSON sans header correct
+        data = data ? JSON.parse(data) : null;
+      } catch {
+        // laisse data en string
+      }
     }
   }
 
-  // ============================= [AJOUT] gestion auto du 401 → refresh → retry =============================
-  if (res.status === 401 && !_retry) {                             // si non autorisé et pas encore retenté
-    const refreshed = await tryRefreshOnce();                      //  on tente de renouveler les tokens
-    if (refreshed) {                                               // si OK, on rejoue la même requête 1 fois
-      const fresh = await loadTokens();                            //  on relit l’access tout neuf
+  // ======= gestion auto du 401 → refresh → retry (1 seule fois) =======
+  if (res.status === 401 && !_retry) {
+    const refreshed = await tryRefreshOnce();
+    if (refreshed) {
+      const fresh = await loadTokens();
       const retryHeaders: Record<string, string> = {
         ...headers,
-        ...(fresh?.access ? { Authorization: `Bearer ${fresh.access}` } : {}), // remet l'Authorization à jour
+        ...(fresh?.access ? { Authorization: `Bearer ${fresh.access}` } : {}),
       };
       const retryRes = await fetch(url, { ...init, headers: retryHeaders, signal: combinedSignal });
       const retryCT = retryRes.headers.get("content-type") || "";
-      const retryIsJson = retryCT.includes("application/json");
+      const retryIsJson = /\bapplication\/json\b/i.test(retryCT);
       const retryHasBody = retryRes.status !== 204 && retryRes.status !== 205;
       let retryData: any = null;
-      if (retryHasBody && retryIsJson) {
-        try {
-          retryData = await retryRes.json();
-        } catch {
-          retryData = null;
+      if (retryHasBody) {
+        if (retryIsJson) {
+          retryData = await retryRes.json().catch(() => null);
+        } else {
+          const txt = await retryRes.text().catch(() => null);
+          try {
+            retryData = txt ? JSON.parse(txt) : null;
+          } catch {
+            retryData = txt;
+          }
         }
       }
-      if (!retryRes.ok) {                                          //  si ça échoue encore
-        if (retryRes.status === 401) {                              //  si toujours 401 => session KO
-          await clearTokens();                                      //  on se déconnecte côté app (tokens effacés)
+      if (!retryRes.ok) {
+        if (retryRes.status === 401) {
+          await clearTokens();
         }
         const msg2 =
-          (retryData && (retryData.message || retryData.error)) || `HTTP ${retryRes.status}`;
+          (retryData && ((retryData as any).message || (retryData as any).error)) ||
+          `HTTP ${retryRes.status}`;
         const text2 = Array.isArray(msg2) ? msg2.join("\n") : String(msg2);
-        throw new HttpError(retryRes.status, text2, retryData);     //  on remonte une erreur propre
+        throw new HttpError(retryRes.status, text2, retryData);
       }
-      return (retryData as T) ?? null;                              // retry OK -> on renvoie la réponse
+      return (retryData as T) ?? null;
     } else {
-      await clearTokens();                                          //  refresh impossible -> on nettoie la session locale
-      // on laisse l'erreur 401 d'origine être gérée ci-dessous (throw HttpError)
+      await clearTokens();
+      // on laissera tomber sur l'erreur 401 originale ci-dessous
     }
   }
-  // =========================== FIN gestion auto du 401 → refresh → retry ===========================
+  // ====================== FIN 401 → refresh → retry ======================
 
   if (!res.ok) {
-    const msg = (data && (data.message || data.error)) || `HTTP ${res.status}`;
+    const msg =
+      (data && (typeof data === "object") && ("message" in data || "error" in data)
+        ? 
+          (data.message || data.error)
+        : `HTTP ${res.status}`);
     const text = Array.isArray(msg) ? msg.join("\n") : String(msg);
     throw new HttpError(res.status, text, data);
   }
