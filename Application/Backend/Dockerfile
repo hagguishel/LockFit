@@ -4,7 +4,7 @@ WORKDIR /app
 
 # 1. Installer toutes les deps (prod + dev)
 COPY package*.json ./
-RUN npm ci
+RUN npm install
 
 # 2. Copier le code
 COPY tsconfig*.json ./
@@ -21,14 +21,13 @@ WORKDIR /app
 
 RUN apk add --no-cache curl
 
-# 1. Copier uniquement package.json pour info
+# 1. Copier package.json (pas obligatoire mais propre)
 COPY package*.json ./
 
-# 2. Copier node_modules ENTIER depuis le build
-#    (on garde tout ce dont Prisma a besoin)
+# 2. Copier node_modules ENTIER depuis l'étape build
 COPY --from=build /app/node_modules ./node_modules
 
-# 3. Copier le code compilé, le schema Prisma, etc.
+# 3. Copier le code compilé + Prisma schema
 COPY --from=build /app/dist ./dist
 COPY --from=build /app/prisma ./prisma
 
