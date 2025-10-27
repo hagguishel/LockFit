@@ -1,11 +1,5 @@
-// app/workouts/index.tsx
-// 🏋️ Onglet "Mes entraînements"
-// Étape 1 : UI fidèle au Figma + palette & layout LockFit
-// Back non filtré (on branchera /workouts?from&to à l'étape 2)
-
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { SafeAreaView } from "react-native-safe-area-context";
-import { Link, Stack, useFocusEffect } from "expo-router";
 import {
   ActivityIndicator,
   FlatList,
@@ -16,15 +10,16 @@ import {
   View,
 } from "react-native";
 import { Ionicons } from "@expo/vector-icons";
+import { useRouter } from "expo-router";
+
 import theme from "@/theme/colors";
 import layout from "@/theme/layout";
 import typography from "@/theme/typography";
-import { listWorkouts, type Workout } from "../../../src/lib/workouts";
-import { useBottomTabBarHeight } from "@react-navigation/bottom-tabs";
-
+import { listWorkouts, type Workout } from "@/lib/workouts";
 
 // === Helpers semaine ===
 const daysLabels = ["Dim", "Lun", "Mar", "Mer", "Jeu", "Ven", "Sam"];
+
 function startOfWeek(d: Date) {
   const x = new Date(d);
   const day = (x.getDay() + 7) % 7;
@@ -45,8 +40,8 @@ function isSameDay(a: Date, b: Date) {
   );
 }
 
-export default function WorkoutsScreen() {
-  const tabBarHeight = useBottomTabBarHeight();
+export default function WorkoutsTabScreen() {
+  const router = useRouter();
 
   const [items, setItems] = useState<Workout[]>([]);
   const [total, setTotal] = useState(0);
@@ -54,9 +49,11 @@ export default function WorkoutsScreen() {
   const [refreshing, setRefreshing] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
+  // semaine / jour sélectionné
   const [weekStart, setWeekStart] = useState<Date>(() => startOfWeek(new Date()));
   const [selectedDay, setSelectedDay] = useState<Date>(() => new Date());
 
+  // charge les workouts
   const load = useCallback(async () => {
     try {
       setError(null);
@@ -71,8 +68,9 @@ export default function WorkoutsScreen() {
     }
   }, []);
 
-  useEffect(() => { load(); }, [load]);
-  useFocusEffect(useCallback(() => { load(); }, [load]));
+  useEffect(() => {
+    load();
+  }, [load]);
 
   const onRefresh = useCallback(async () => {
     setRefreshing(true);
@@ -82,11 +80,16 @@ export default function WorkoutsScreen() {
 
   const s = styles;
 
+  // rendu liste / vide / erreur
   const listContent = useMemo(() => {
-    if (loading) {
-      return <View style={s.center}><ActivityIndicator /></View>;
-    }
-    if (error) {
+    if (loading)
+      return (
+        <View style={s.center}>
+          <ActivityIndicator />
+        </View>
+      );
+
+    if (error)
       return (
         <View style={s.emptyCard}>
           <Text style={s.errorText}>{error}</Text>
@@ -95,49 +98,41 @@ export default function WorkoutsScreen() {
           </Pressable>
         </View>
       );
-    }
-    if (items.length === 0) {
+
+    if (items.length === 0)
       return (
         <View style={s.emptyCard}>
           <Text style={s.sectionTitle}>Workouts du jour</Text>
-
-          <View style={{ height: layout.gap.lg }} />
-
           <Text style={s.emoji}>🏋️‍♂️</Text>
           <Text style={s.emptyTitle}>Aucun workout prévu aujourd&apos;hui</Text>
-
-          <View style={{ height: layout.gap.lg }} />
-
-          <Link href="/workouts/new" asChild>
-            <Pressable style={s.ctaLarge}>
-              <Ionicons name="add" size={18} color={theme.colors.onPrimary} />
-              <Text style={[s.ctaText, { marginLeft: 6 }]}>
-                CREER UN WORKOUT
-              </Text>
-            </Pressable>
-          </Link>
         </View>
       );
-    }
+
     return (
       <>
         <Text style={s.sectionTitle}>Workouts du jour</Text>
+
         <FlatList
           data={items}
           keyExtractor={(w) => w.id}
-          refreshControl={<RefreshControl refreshing={refreshing} onRefresh={onRefresh} />}
-          contentContainerStyle={{ gap: layout.gap.md, paddingBottom: 128 }} // évite que le FAB masque le dernier item
+          refreshControl={
+            <RefreshControl refreshing={refreshing} onRefresh={onRefresh} />
+          }
+          contentContainerStyle={{
+            gap: 12,
+            paddingBottom: 160, // espace en bas pour ne pas cacher le dernier item
+          }}
           renderItem={({ item }) => (
-            <Link href={`/workouts/${item.id}`} asChild>
-              <Pressable style={s.card}>
-                <Text style={s.cardTitle}>{item.title}</Text>
-                <Text style={s.cardSub}>
-                  {item.finishedAt ? "Terminé" : "Planifié / En cours"}
-                </Text>
-              </Pressable>
-            </Link>
+            <Pressable style={s.card}>
+              <Text style={s.cardTitle}>{item.title}</Text>
+              <Text style={s.cardSub}>
+                {item.finishedAt ? "Terminé" : "Planifié / En cours"}
+              </Text>
+            </Pressable>
           )}
-          ListFooterComponent={<Text style={s.totalText}>Total: {total}</Text>}
+          ListFooterComponent={
+            <Text style={s.totalText}>Total: {total}</Text>
+          }
         />
       </>
     );
@@ -145,16 +140,14 @@ export default function WorkoutsScreen() {
 
   return (
     <SafeAreaView style={s.container} edges={["top", "bottom"]}>
-      <Stack.Screen options={{ headerShown: false }} />
-
       {/* Header */}
       <View style={s.header}>
         <Text style={s.title}>Mes entraînements</Text>
-        <Link href="/calendar" asChild>
-          <Pressable style={s.iconBtn}>
-            <Ionicons name="calendar-outline" size={20} color={theme.colors.text} />
-          </Pressable>
-        </Link>
+
+        {/* petit bouton calendrier à droite (optionnel) */}
+        <Pressable style={s.iconBtn} onPress={() => console.log("calendar!")}>
+          <Ionicons name="calendar-outline" size={20} color="#E6F0FF" />
+        </Pressable>
       </View>
 
       {/* Bandeau semaine */}
@@ -166,22 +159,26 @@ export default function WorkoutsScreen() {
         onSelectDay={setSelectedDay}
       />
 
-      <View style={{ height: layout.gap.md }} />
+      <View style={{ height: 16 }} />
 
-      {/* Contenu */}
+      {/* Contenu liste / vide / erreur */}
       {listContent}
 
-      {/* Bouton flottant toujours visible */}
-      <Link href="/workouts/new" asChild>
-        <Pressable style={s.fab} accessibilityRole="button" accessibilityLabel="Créer un workout">
-          <Ionicons name="add" size={28} color={theme.colors.onPrimary} />
-        </Pressable>
-      </Link>
+      {/* FAB flottant -> va vers création */}
+      <Pressable
+        onPress={() => {
+          router.push("/workouts/new"); // 🔗 va à l'écran de création
+        }}
+        style={s.fab}
+      >
+        <Ionicons name="add" size={32} color="#061018" />
+      </Pressable>
     </SafeAreaView>
   );
 }
 
 // === Bandeau semaine ===
+// On affiche la semaine (Dim Lun Mar...) + chevrons gauche/droite
 function WeekStrip({
   weekStart,
   selectedDay,
@@ -196,29 +193,33 @@ function WeekStrip({
   onSelectDay: (d: Date) => void;
 }) {
   const days = Array.from({ length: 7 }, (_, i) => addDays(weekStart, i));
-  const s = styles;
-
   return (
-    <View style={s.weekStrip}>
-      <Pressable style={s.arrow} onPress={onPrevWeek}>
-        <Ionicons name="chevron-back" size={18} color={theme.colors.muted} />
+    <View style={styles.weekStrip}>
+      {/* flèche gauche */}
+      <Pressable style={styles.arrow} onPress={onPrevWeek}>
+        <Ionicons name="chevron-back" size={18} color="#98A2B3" />
       </Pressable>
 
-      <View style={s.weekDays}>
+      {/* jours */}
+      <View style={styles.weekDays}>
         {days.map((d, i) => {
           const active = isSameDay(d, selectedDay);
           return (
-            <Pressable key={i} style={s.dayItem} onPress={() => onSelectDay(d)}>
+            <Pressable
+              key={i}
+              style={styles.dayItem}
+              onPress={() => onSelectDay(d)}
+            >
               <View
                 style={[
-                  s.dayDot,
-                  active && { backgroundColor: theme.colors.primary },
+                  styles.dayDot,
+                  active && { backgroundColor: "#12E29A" },
                 ]}
               />
               <Text
                 style={[
-                  s.dayLabel,
-                  active && { color: theme.colors.text },
+                  styles.dayLabel,
+                  active && { color: "#E6F0FF" },
                 ]}
               >
                 {daysLabels[i]}
@@ -228,118 +229,181 @@ function WeekStrip({
         })}
       </View>
 
-      <Pressable style={s.arrow} onPress={onNextWeek}>
-        <Ionicons name="chevron-forward" size={18} color={theme.colors.muted} />
+      {/* flèche droite */}
+      <Pressable style={styles.arrow} onPress={onNextWeek}>
+        <Ionicons name="chevron-forward" size={18} color="#98A2B3" />
       </Pressable>
     </View>
   );
 }
 
-// === Styles ===
+// === styles ===
 const styles = StyleSheet.create({
   container: {
     flex: 1,
-    backgroundColor: theme.colors.bg,
-    paddingHorizontal: layout.inset.x,
-    paddingTop: layout.inset.y,
-    position: "relative",      // <-- pour que le FAB en position:absolute se réfère à cet écran
-  },
-  header: {
-    flexDirection: "row",
-    alignItems: "center",
-    justifyContent: "space-between",
-    marginBottom: layout.section.headerGap,
-  },
-  title: { ...typography.h1 },
-  iconBtn: {
-    padding: 8,
-    borderRadius: layout.radius.md,
-    backgroundColor: "rgba(255,255,255,0.04)",
+    backgroundColor: "#0F1420",
+    paddingHorizontal: 16,
+    position: "relative",
   },
 
+  header: {
+    flexDirection: "row",
+    justifyContent: "space-between",
+    marginTop: 24,
+    marginBottom: 16,
+    alignItems: "center",
+  },
+
+  title: {
+    color: "#E6F0FF",
+    fontSize: 22,
+    fontWeight: "700",
+  },
+
+  iconBtn: {
+    backgroundColor: "rgba(255,255,255,0.05)",
+    borderRadius: 12,
+    paddingHorizontal: 10,
+    paddingVertical: 10,
+  },
+
+  // Bandeau semaine
   weekStrip: {
     flexDirection: "row",
     alignItems: "center",
     justifyContent: "space-between",
-    borderRadius: layout.radius.lg,
-    backgroundColor: theme.colors.surface,
+
+    backgroundColor: "#121927",
+    borderColor: "#232A3A",
     borderWidth: 1,
-    borderColor: theme.colors.border,
-    paddingHorizontal: layout.gap.sm,
-    paddingVertical: layout.gap.sm + 2,
+    borderRadius: 16,
+
+    paddingHorizontal: 12,
+    paddingVertical: 12,
   },
-  arrow: { padding: 6, borderRadius: layout.radius.sm },
+
+  arrow: {
+    padding: 6,
+    borderRadius: 8,
+  },
+
   weekDays: {
     flex: 1,
     flexDirection: "row",
     justifyContent: "space-around",
     alignItems: "center",
-    paddingHorizontal: layout.gap.xs,
+    paddingHorizontal: 8,
   },
-  dayItem: { alignItems: "center", gap: layout.gap.xs },
+
+  dayItem: {
+    alignItems: "center",
+    gap: 6,
+  },
+
   dayDot: {
     width: 24,
     height: 24,
     borderRadius: 12,
-    backgroundColor: theme.colors.dot,
+    backgroundColor: "#2A303F", // gris neutre tant que pas actif
   },
-  dayLabel: { ...typography.mute, fontSize: 12, lineHeight: 16, fontWeight: "600" },
 
-  sectionTitle: { ...typography.h2, marginBottom: layout.gap.sm },
+  dayLabel: {
+    color: "#98A2B3",
+    fontSize: 12,
+    lineHeight: 16,
+    fontWeight: "600",
+  },
+
+  // Liste / cartes
+  sectionTitle: {
+    color: "#E6F0FF",
+    fontWeight: "700",
+    marginTop: 24,
+    marginBottom: 10,
+  },
 
   card: {
+    backgroundColor: "#121927",
+    borderRadius: 16,
+    padding: 16,
     borderWidth: 1,
-    borderColor: theme.colors.border,
-    backgroundColor: theme.colors.surface,
-    borderRadius: layout.radius.lg,
-    padding: layout.gap.lg,
-    ...theme.shadow.card,
+    borderColor: "#232A3A",
   },
-  cardTitle: { ...typography.h2 },
-  cardSub: { ...typography.mute, marginTop: layout.gap.xs },
+
+  cardTitle: {
+    color: "#E6F0FF",
+    fontSize: 18,
+    fontWeight: "700",
+  },
+
+  cardSub: {
+    color: "#98A2B3",
+    marginTop: 4,
+  },
+
+  emoji: {
+    fontSize: 36,
+    marginBottom: 8,
+  },
 
   emptyCard: {
+    borderColor: "#232A3A",
     borderWidth: 1,
-    borderColor: theme.colors.border,
-    backgroundColor: theme.colors.surface,
-    borderRadius: layout.radius.lg,
-    padding: layout.gap.xl,
+    backgroundColor: "#121927",
+    borderRadius: 16,
+    padding: 24,
     alignItems: "center",
+    marginTop: 24,
   },
-  emoji: { fontSize: 36, marginBottom: layout.gap.sm },
-  emptyTitle: { ...typography.mute },
+
+  emptyTitle: {
+    color: "#98A2B3",
+  },
+
+  totalText: {
+    color: "#98A2B3",
+    marginTop: 8,
+  },
 
   cta: {
-    backgroundColor: theme.colors.primary,
-    paddingVertical: layout.gap.sm,
-    paddingHorizontal: layout.gap.lg,
-    borderRadius: layout.radius.md,
+    backgroundColor: "#12E29A",
+    paddingVertical: 8,
+    paddingHorizontal: 16,
+    borderRadius: 12,
+    marginTop: 12,
   },
-  ctaLarge: {
-    backgroundColor: theme.colors.primary,
-    paddingVertical: layout.gap.sm + 4,
-    paddingHorizontal: layout.gap.lg,
-    borderRadius: layout.radius.md,
-    flexDirection: "row",
-    alignItems: "center",
+
+  ctaText: {
+    color: "#061018",
+    fontWeight: "700",
   },
-  ctaText: { ...typography.cta },
 
-  totalText: { color: theme.colors.muted, marginTop: layout.gap.sm },
-
-  fab: {
-    position: "absolute",
-    right: layout.inset.x,
-    width: 56,
-    height: 56,
-    borderRadius: 28,
+  center: {
+    flex: 1,
     alignItems: "center",
     justifyContent: "center",
-    backgroundColor: theme.colors.primary,
-    zIndex: 10,               // <-- garantie de passage au-dessus
-    ...theme.shadow.card,     // iOS shadow + Android elevation via ton token
   },
 
-  center: { flex: 1, alignItems: "center", justifyContent: "center" },
-  errorText: { color: theme.colors.danger, marginBottom: 10 },
+  errorText: {
+    color: "#FF5C5C",
+  },
+
+  // FAB
+  fab: {
+    position: "absolute",
+    right: 24,
+    bottom: 100, // on le garde au-dessus de la tab bar
+    width: 64,
+    height: 64,
+    borderRadius: 32,
+    backgroundColor: "#12E29A",
+    alignItems: "center",
+    justifyContent: "center",
+    zIndex: 9999,
+    elevation: 50,
+    shadowColor: "#000",
+    shadowOpacity: 0.5,
+    shadowRadius: 10,
+    shadowOffset: { width: 0, height: 3 },
+  },
 });

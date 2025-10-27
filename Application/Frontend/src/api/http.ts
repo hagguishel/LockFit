@@ -1,24 +1,29 @@
-// http.ts — centralise la construction d’URL, les en-têtes, la sérialisation JSON et la gestion des erreurs
-
 // =======================================================
-// 🌐 Configuration de base de l'API
+// 🌐 Configuration de base de l’API
 // =======================================================
-const RAW_BASE = process.env.EXPO_PUBLIC_API_URL ?? "";
-export const CLEAN_BASE = RAW_BASE.trim().replace(/\/+$/, ""); // on retire les / en fin d’URL
-if (!CLEAN_BASE) {
-  // Sur téléphone réel, on DOIT fournir EXPO_PUBLIC_API_URL (tunnel HTTPS conseillé)
-  throw new Error(
-    "EXPO_PUBLIC_API_URL manquant (ex: https://<ton-tunnel>.trycloudflare.com/api/v1)"
-  );
-}
 
-export const API_BASE = `${CLEAN_BASE}/api/v1`;
+// 1. On récupère la variable EXPO_PUBLIC_API_URL si elle existe.
+//    Sinon on met par défaut l'API Render publique (en HTTPS, accessible depuis n'importe où).
+const FALLBACK_BASE = "https://lockfit.onrender.com";
 
-// Petit helper pour assembler l’URL finale sans // doublons
+const RAW_BASE = process.env.EXPO_PUBLIC_API_URL ?? FALLBACK_BASE;
+
+// On nettoie (enlève les espaces, enlève le / à la fin)
+export const CLEAN_BASE = RAW_BASE.trim().replace(/\/+$/, "");
+
+// IMPORTANT : sur Render, toutes les routes commencent déjà par /api/v1
+// Exemple valide : https://lockfit.onrender.com/api/v1/health
+// Donc on ne rajoute PAS /api/v1 deux fois ici.
+export const API_BASE = `${CLEAN_BASE}/api/v1`; // <-- on ne colle plus /api/v1 directement ici
+
+// Petit helper pour assembler l’URL finale correctement
 function buildUrl(path: string): string {
+  // si on appelle http("/api/v1/auth/login") on veut pas du double slash
   const p = path.startsWith("/") ? path : `/${path}`;
-  return `${API_BASE}${p}`.replace(/(?<!:)\/{2,}/g, "/"); // garde 'https://' intact
+  const raw = `${API_BASE}${p}`;
+  return raw.replace(/([^:]\/)\/+/g, "$1");
 }
+
 
 // =======================================================
 // ⚙️ Type d’options acceptées par la fonction http()

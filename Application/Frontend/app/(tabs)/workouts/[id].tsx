@@ -11,8 +11,18 @@ import {
   TextInput,
 } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
-import { Stack, useLocalSearchParams, useFocusEffect, useRouter } from "expo-router";
-import { getWorkout, finishWorkout, type Workout, addWorkoutItem } from "../../../src/lib/workouts";
+import {
+  Stack,
+  useLocalSearchParams,
+  useFocusEffect,
+  useRouter,
+} from "expo-router";
+import {
+  getWorkout,
+  finishWorkout,
+  type Workout,
+  addWorkoutItem,
+} from "../../../src/lib/workouts";
 
 export default function WorkoutDetailScreen() {
   const { id } = useLocalSearchParams<{ id: string }>();
@@ -22,41 +32,56 @@ export default function WorkoutDetailScreen() {
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
   const [finishing, setFinishing] = useState(false);
+
+  // form ajout exercice
   const [exId, setExId] = useState("");
   const [reps, setReps] = useState("10");
   const [weight, setWeight] = useState("");
   const [rest, setRest] = useState("");
   const [adding, setAdding] = useState(false);
+
+  // suivi local des sets cochés
   const [doneSets, setDoneSets] = useState<Record<string, Set<number>>>({});
 
-  const keyFor = useCallback((exerciseId: string, order: number) =>
-    `${exerciseId}-${order}`, []
+  // clé unique d'un exercice pour le suivi des sets cochés
+  const keyFor = useCallback(
+    (exerciseId: string, order: number) => `${exerciseId}-${order}`,
+    []
   );
 
-  const toggleSet = useCallback((exerciseId: string, order: number, setIndex: number) => {
-    const k = keyFor(exerciseId, order);
-    setDoneSets(prev => {
-      const copy = { ...prev };
-      const s = new Set(copy[k] ?? []);
-      if (s.has(setIndex)) {
-        s.delete(setIndex);
-      } else {
-        s.add(setIndex);
+  // toggle (cocher / décocher) une série
+  const toggleSet = useCallback(
+    (exerciseId: string, order: number, setIndex: number) => {
+      const k = keyFor(exerciseId, order);
+      setDoneSets((prev) => {
+        const copy = { ...prev };
+        const s = new Set(copy[k] ?? []);
+        if (s.has(setIndex)) {
+          s.delete(setIndex);
+        } else {
+          s.add(setIndex);
+        }
+        copy[k] = s;
+        return copy;
+      });
+    },
+    [keyFor]
+  );
+
+  // bouton "valider le prochain set"
+  const nextSet = useCallback(
+    (exerciseId: string, order: number, totalSets: number) => {
+      const k = keyFor(exerciseId, order);
+      const s = doneSets[k] ?? new Set<number>();
+      const next = [...Array(totalSets).keys()].find((i) => !s.has(i));
+      if (next !== undefined) {
+        toggleSet(exerciseId, order, next);
       }
-      copy[k] = s;
-      return copy;
-    });
-  }, [keyFor]);
+    },
+    [doneSets, keyFor, toggleSet]
+  );
 
-  const nextSet = useCallback((exerciseId: string, order: number, totalSets: number) => {
-    const k = keyFor(exerciseId, order);
-    const s = doneSets[k] ?? new Set<number>();
-    const next = [...Array(totalSets).keys()].find(i => !s.has(i));
-    if (next !== undefined) {
-      toggleSet(exerciseId, order, next);
-    }
-  }, [doneSets, keyFor, toggleSet]);
-
+  // charge le workout depuis l'API
   const load = useCallback(async () => {
     try {
       setLoading(true);
@@ -81,17 +106,20 @@ export default function WorkoutDetailScreen() {
     }, [load])
   );
 
+  // Pull to refresh
   const onRefresh = useCallback(async () => {
     setRefreshing(true);
     await load();
     setRefreshing(false);
   }, [load]);
 
+  // Marquer la séance comme terminée
   const onFinish = useCallback(async () => {
     if (!data || data.finishedAt) return;
 
-    // Optimiste: on marque terminé localement
     setFinishing(true);
+
+    // Optimiste: on marque terminé localement tout de suite
     const previous = data;
     setData({ ...data, finishedAt: new Date().toISOString() });
 
@@ -99,7 +127,7 @@ export default function WorkoutDetailScreen() {
       await finishWorkout(String(id));
       Alert.alert("Séance terminée ✅");
     } catch (e: any) {
-      // Rollback si échec
+      // Rollback si erreur
       setData(previous);
       Alert.alert("Erreur", e?.message || "Impossible de terminer");
     } finally {
@@ -107,6 +135,7 @@ export default function WorkoutDetailScreen() {
     }
   }, [data, id]);
 
+  // Ajouter un exercice à la séance
   const onAddItem = useCallback(async () => {
     const exerciseId = exId.trim();
     const r = Number(reps);
@@ -119,7 +148,10 @@ export default function WorkoutDetailScreen() {
     }
 
     if (!Number.isFinite(r) || r <= 0) {
-      Alert.alert("Série", "Indique un nombre de répétitions valide (> 0).");
+      Alert.alert(
+        "Série invalide",
+        "Indique un nombre de répétitions valide (> 0)."
+      );
       return;
     }
 
@@ -131,16 +163,16 @@ export default function WorkoutDetailScreen() {
         weight: wkg,
         rest: rs,
       });
-      console.log(updated.items)
-      // Si le back ne renvoie pas les items complets, on refetch
-      if (!updated?.items || !Array.isArray(updated.items)) {
-        await load();
-      } else {
+
+      // si l'API renvoie le workout complet mis à jour -> on le met direct
+      if (updated?.items && Array.isArray(updated.items)) {
         setData(updated);
-        console.log(data);
+      } else {
+        // sinon on refetch proprement
+        await load();
       }
 
-      // Reset du formulaire
+      // reset du formulaire
       setExId("");
       setReps("10");
       setWeight("");
@@ -148,22 +180,26 @@ export default function WorkoutDetailScreen() {
 
       Alert.alert("OK", "Exercice ajouté.");
     } catch (e: any) {
-      Alert.alert("Erreur", e?.message || "Impossible d'ajouter l'exercice.");
+      Alert.alert(
+        "Erreur",
+        e?.message || "Impossible d'ajouter l'exercice."
+      );
     } finally {
       setAdding(false);
     }
   }, [exId, reps, weight, rest, id, load]);
 
+  // Titre affiché dans le header natif
   const title = data?.title || "Séance";
 
+  // Texte statut (terminée ou pas)
   const finishedAtText = useMemo(() => {
     if (!data?.finishedAt) return "🕓 En cours";
     const d = new Date(data.finishedAt);
     return `✅ Terminée le ${d.toLocaleDateString()} ${d.toLocaleTimeString()}`;
   }, [data?.finishedAt]);
 
-  const hasItems = (data?.items?.length ?? 0) > 0;
-
+  // Sécurité pendant le tout premier chargement
   if (loading && !data) {
     return (
       <SafeAreaView style={s.center} edges={["top", "bottom"]}>
@@ -172,13 +208,16 @@ export default function WorkoutDetailScreen() {
     );
   }
 
+  // On est prêt à afficher l'écran
   return (
     <SafeAreaView style={s.container} edges={["top", "bottom"]}>
       <Stack.Screen options={{ title }} />
 
       <ScrollView
         contentContainerStyle={{ paddingBottom: 24 }}
-        refreshControl={<RefreshControl refreshing={refreshing} onRefresh={onRefresh} />}
+        refreshControl={
+          <RefreshControl refreshing={refreshing} onRefresh={onRefresh} />
+        }
       >
         {/* Carte d'info */}
         <View style={s.card}>
@@ -186,7 +225,7 @@ export default function WorkoutDetailScreen() {
           <Text style={s.status}>{finishedAtText}</Text>
         </View>
 
-        {/* Actions */}
+        {/* Action "marquer terminé" */}
         {!data?.finishedAt && (
           <Pressable
             style={[s.cta, finishing && { opacity: 0.6 }]}
@@ -200,16 +239,19 @@ export default function WorkoutDetailScreen() {
         )}
 
         {/* Liste des exercices */}
+        <View style={s.card}>
+          <Text style={s.sectionTitle}>Exercices</Text>
 
-          <View style={s.card}>
-            <Text style={s.sectionTitle}>Exercices</Text>
-
-            {data!.items!.map((it, idx) => {
+          {data?.items && data.items.length > 0 ? (
+            data.items.map((it, idx) => {
               const k = keyFor(it.exerciseId, it.order);
               const done = doneSets[k] ?? new Set<number>();
 
               return (
-                <View key={`${it.exerciseId}-${it.order}-${idx}`} style={s.exerciseItem}>
+                <View
+                  key={`${it.exerciseId}-${it.order}-${idx}`}
+                  style={s.exerciseItem}
+                >
                   <View style={s.exerciseHeader}>
                     <Text style={s.exerciseTitle}>
                       #{it.order} - {it.exerciseId}
@@ -225,24 +267,36 @@ export default function WorkoutDetailScreen() {
                     return (
                       <Pressable
                         key={i}
-                        onPress={() => !isDisabled && toggleSet(it.exerciseId, it.order, i)}
+                        onPress={() =>
+                          !isDisabled &&
+                          toggleSet(it.exerciseId, it.order, i)
+                        }
                         style={s.setRow}
                         disabled={isDisabled}
                       >
-                        <Text style={{ color: isDone ? "#12E29A" : "#98A2B3" }}>
+                        <Text
+                          style={{
+                            color: isDone ? "#12E29A" : "#98A2B3",
+                          }}
+                        >
                           {isDone ? "✓ " : "• "}
                           Série {i + 1}: {set.reps} reps
-                          {typeof set.weight === "number" ? ` @${set.weight}kg` : ""}
-                          {typeof set.rest === "number" ? ` (repos ${set.rest}s)` : ""}
+                          {typeof set.weight === "number"
+                            ? ` @${set.weight}kg`
+                            : ""}
+                          {typeof set.rest === "number"
+                            ? ` (repos ${set.rest}s)`
+                            : ""}
                         </Text>
                       </Pressable>
                     );
                   })}
 
-                  {/* Bouton "valider le prochain set" */}
                   {(it.sets?.length ?? 0) > 0 && !data?.finishedAt && (
                     <Pressable
-                      onPress={() => nextSet(it.exerciseId, it.order, it.sets!.length)}
+                      onPress={() =>
+                        nextSet(it.exerciseId, it.order, it.sets!.length)
+                      }
                       style={s.nextSetBtn}
                     >
                       <Text style={s.ctaText}>Valider le prochain set</Text>
@@ -250,9 +304,13 @@ export default function WorkoutDetailScreen() {
                   )}
                 </View>
               );
-            })}
-          </View>
-
+            })
+          ) : (
+            <Text style={{ color: "#98A2B3" }}>
+              Aucun exercice pour l’instant.
+            </Text>
+          )}
+        </View>
 
         {/* Formulaire d'ajout d'exercice */}
         <View style={s.card}>
@@ -303,7 +361,10 @@ export default function WorkoutDetailScreen() {
           />
 
           <Pressable
-            style={[s.cta, (adding || !!data?.finishedAt) && { opacity: 0.6 }]}
+            style={[
+              s.cta,
+              (adding || !!data?.finishedAt) && { opacity: 0.6 },
+            ]}
             onPress={onAddItem}
             disabled={adding || !!data?.finishedAt}
           >
@@ -328,7 +389,11 @@ export default function WorkoutDetailScreen() {
                 "Es-tu sûr de vouloir réinitialiser toutes les séries validées ?",
                 [
                   { text: "Annuler", style: "cancel" },
-                  { text: "Réinitialiser", onPress: () => setDoneSets({}), style: "destructive" }
+                  {
+                    text: "Réinitialiser",
+                    onPress: () => setDoneSets({}),
+                    style: "destructive",
+                  },
                 ]
               );
             }}

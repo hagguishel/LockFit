@@ -1,4 +1,16 @@
-# 🏋️ LockFit — Refonte Frontend : Onglet « Mes entraînements »
+# 🏋️ LockFit — Module Complet « Workouts » (Frontend + Logique API)
+
+## 🧭 Vue d’ensemble
+Ce document unifie la **refonte frontend** (écran “Mes entraînements”) et la **logique complète du module Workouts** (liste, création, détail, API).
+Il constitue la documentation de référence pour le module *Workouts* de LockFit :
+> - Design & palette LockFit
+> - Architecture frontend (Expo Router)
+> - Logique API & intégration backend
+> - Fonctionnement complet utilisateur
+
+---
+
+# 🧩 Phase 1 — Refonte Frontend : Onglet « Mes entraînements »
 
 ## 🎯 Objectif
 Mettre à jour l’onglet **Mes entraînements** pour correspondre au design Figma :
@@ -90,19 +102,6 @@ shadow.card: elevation 6, rayon 8, opacité 0.25
 
 ---
 
-## 🧩 Exemple visuel (maquette Figma)
-```
-╭────────────────────────────────────────╮
-│  Mes entraînements        [📅]          │
-│  ⭠ ○○●○○○○ ⭢                       │
-│  Workouts du jour                       │
-│  🏋️ Aucun workout prévu aujourd’hui     │
-│  [ + CRÉER UN WORKOUT ]                │
-╰────────────────────────────────────────╯
-```
-
----
-
 ## 🧠 Tests de validation (checklist)
 
 - [x] UI conforme à la maquette (bandeau, couleurs, typographies)
@@ -115,44 +114,107 @@ shadow.card: elevation 6, rayon 8, opacité 0.25
 
 ---
 
-## ⚠️ Problèmes rencontrés
+# 🧩 Phase 2 — Module Complet Workouts (Frontend + API)
 
-### ❌ Erreur « Network request failed »
-> Exemple :
-> `Échec réseau vers https://kilometers-reader-gates-shades.trycloudflare.com/api/v1/api/v1/workouts`
+## 📘 Objectif général
 
-**Cause** : `EXPO_PUBLIC_API_URL` contenait déjà `/api/v1`.
-**Correction** :
-```bash
-EXPO_PUBLIC_API_URL=https://kilometers-reader-gates-shades.trycloudflare.com
+Le module **Workouts** gère tout le cycle de vie d’un entraînement dans LockFit :
+- consultation de la liste des séances planifiées ou terminées ;
+- création d’un nouvel entraînement ;
+- affichage détaillé d’une séance ;
+- ajout d’exercices, validation des séries, et fin de séance.
+
+Ce module connecte le **frontend React Native (Expo Router)** avec le **backend NestJS/Prisma** via les fonctions d’API définies dans `src/lib/workouts.ts`.
+
+---
+
+## 🧱 Structure du module
+
 ```
-➡️ Redémarrer Expo :
-`npx expo start --clear`
+app/
+└── (tabs)/
+    └── workouts/
+        ├── index.tsx   → Liste des entraînements
+        ├── new.tsx     → Création d’un entraînement
+        └── [id].tsx    → Détail d’un entraînement
+```
 
-### ⚙️ Vérifications backend / tunnel
-- Cloudflared actif (`ps aux | grep cloudflared`)
-- URL du tunnel HTTPS fonctionnelle
-- Pas de port 3001 exposé en HTTP clair (iOS/Android refusent le HTTP)
-
----
-
-## ✅ Résultat attendu
-- Interface identique à la maquette Figma
-- Thème et spacing uniformes
-- Écran prêt pour connexion backend `/api/v1/workouts?from&to`
-- Code 100 % typé et factorisé (thème, layout, typo)
+Chaque écran correspond à une route dans Expo Router :
+- `/workouts` → liste
+- `/workouts/new` → création
+- `/workouts/[id]` → détail d’une séance spécifique
 
 ---
 
-## 🔜 Étape suivante (Backend)
-Aligner l’API NestJS avec le front :
-- [ ] Endpoint `GET /workouts?from&to` pour filtrer par jour/semaine
-- [ ] Retour JSON `{ items, total }` au même format que `listWorkouts()`
-- [ ] Gestion des erreurs HTTP cohérente (500/422 → message UI)
-- [ ] Tests E2E pour le module `workouts`
+## 🔍 Fichier `[id].tsx` — Détail d’un entraînement
+
+### 🎯 Rôle
+Affiche et gère **une séance précise** (vue individuelle).
+
+### 📦 Données
+- `getWorkout(id)` → récupération du workout
+- `finishWorkout(id)` → marquer terminé
+- `addWorkoutItem()` → ajouter un exercice
+- `doneSets` → gestion locale de la progression
+
+### 🧩 Sections principales
+- Carte d’info générale (note, statut)
+- Bouton “Marquer terminé”
+- Liste des exercices et séries (✓ / •)
+- Formulaire d’ajout d’exercices
+- Bouton “Réinitialiser la progression”
+- Bouton “Retour”
+
+### ⚙️ Intégration API
+
+| Fonction | Endpoint |
+|-----------|-----------|
+| listWorkouts | `GET /api/v1/workouts` |
+| createWorkout | `POST /api/v1/workouts` |
+| getWorkout | `GET /api/v1/workouts/:id` |
+| addWorkoutItem | `POST /api/v1/workouts/:id/items` |
+| finishWorkout | `PATCH /api/v1/workouts/:id/finish` |
+
+---
+
+## 🧭 Navigation & UX Flow
+
+```mermaid
+graph TD
+  A[/workouts (index.tsx)/] -->|appuie sur +| B[/workouts/new/]
+  B -->|création OK| C[/workouts/[id]/]
+  A -->|tape sur une carte| C
+  C -->|retour| A
+```
+
+---
+
+## 💬 Notes techniques
+
+- Compatible Android / mobile réel (Cloudflare tunnel)
+- Expo Router pour navigation (`Link`, `router.push`, `router.back`)
+- SafeAreaView sur tous les écrans
+- Thème, typographie, layout centralisés
+
+---
+
+## ✅ Résumé final
+
+| Fonctionnalité | État |
+|----------------|------|
+| Liste des workouts (GET) | ✅ |
+| Création d’un workout | ✅ |
+| Détail d’un workout | ✅ |
+| Ajout d’un exercice | ✅ |
+| Validation des sets | ✅ |
+| Marquer terminé | ✅ |
+| Thème LockFit global | ✅ |
+| Semaine interactive | ✅ |
+| Suppression / édition | 🚧 À venir |
+| Intégration planning | 🚧 À venir |
 
 ---
 
 **Auteur :** Haggui Razafimaitso
-**Date :** 2025-10-22
-**Version :** v1.0 – Front “Mes entraînements” finalisé
+**Dernière mise à jour :** Octobre 2025
+**Version :** v2.0 — Module complet “Workouts” (Front + API)
