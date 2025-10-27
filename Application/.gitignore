@@ -19,6 +19,9 @@ build/
 .env
 .env.*.local
 .lockfit.env
+.env.local
+.env.render
+.env.prod
 # exemples autorisés
 !.env.example
 
