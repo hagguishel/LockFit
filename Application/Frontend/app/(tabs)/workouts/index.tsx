@@ -15,15 +15,10 @@ import {
 import { Ionicons } from "@expo/vector-icons";
 import { useRouter } from "expo-router";
 
-// (Pas encore utilisé partout mais on les garde pour la suite du design thème)
-import theme from "@/theme/colors";
-import layout from "@/theme/layout";
-import typography from "@/theme/typography";
-
-// IMPORTANT : on utilise ton client métier
+// API client vers ton backend NestJS
 // - listWorkouts() -> GET /workouts
 // - deleteWorkout() -> DELETE /workouts/:id
-// - Workout -> type partagé
+// - Workout -> type aligné backend
 import {
   listWorkouts,
   deleteWorkout,
@@ -34,26 +29,35 @@ import {
    Helpers calendrier / semaine
    ------------------------------------------------- */
 
-// Labels des jours pour la barre semaine
+// Labels des jours dans la barre semaine
 const daysLabels = ["Dim", "Lun", "Mar", "Mer", "Jeu", "Ven", "Sam"];
 
-// Début de semaine pour une date donnée
+/**
+ * startOfWeek(d)
+ * Retourne le début de semaine pour la date d.
+ */
 function startOfWeek(d: Date) {
   const x = new Date(d);
-  const day = (x.getDay() + 7) % 7; // 0=dimanche etc.
+  const day = (x.getDay() + 7) % 7; // 0 = dimanche
   x.setHours(0, 0, 0, 0);
   x.setDate(x.getDate() - day);
   return x;
 }
 
-// d + n jours
+/**
+ * addDays(d, n)
+ * Retourne une nouvelle date: d + n jours.
+ */
 function addDays(d: Date, n: number) {
   const x = new Date(d);
   x.setDate(x.getDate() + n);
   return x;
 }
 
-// Compare juste la date (AAAA-MM-JJ), pas l'heure
+/**
+ * isSameDay(a,b)
+ * Compare juste AAAA-MM-JJ (pas l'heure).
+ */
 function isSameDay(a: Date, b: Date) {
   return (
     a.getFullYear() === b.getFullYear() &&
@@ -63,36 +67,28 @@ function isSameDay(a: Date, b: Date) {
 }
 
 /* -------------------------------------------------
-   Helpers produit (calculs d'affichage)
-   -------------------------------------------------
-   NOTE :
-   On tape dans `any` exprès pour être tolérant avec TS,
-   car ton type Workout côté front peut ne pas forcément
-   refléter 1:1 ce que Prisma renvoie, surtout sur les sous-objets.
-   Le runtime reste bon parce que ça vient direct du back.
----------------------------------------------------*/
+   Helpers produit (calcul affichage)
+   ------------------------------------------------- */
 
 /**
  * computeTotalSets(workout)
- * -> nombre total de séries prévues dans ce workout
- * On additionne la longueur des `sets` de chaque item.
+ * Compte le nombre total de séries (= sets)
+ * en additionnant pour chaque exercice.
  */
 function computeTotalSets(workout: any): number {
   if (!workout?.items) return 0;
 
   return workout.items.reduce((acc: number, item: any) => {
-    const safeLen = Array.isArray(item?.sets) ? item.sets.length : 0;
-    return acc + safeLen;
+    const count = Array.isArray(item?.sets) ? item.sets.length : 0;
+    return acc + count;
   }, 0);
 }
 
 /**
  * computeEstimatedDurationMin(workout)
- * -> estimation de la durée d'une séance en minutes
- * On parcourt toutes les séries :
- *   - 30s d'exécution par série
- *   - + repos (rest) si défini, sinon 60s par défaut
- * puis on convertit en minutes arrondies.
+ * Estimation rapide de la durée :
+ * - chaque série = ~30s de travail
+ * - repos entre séries = set.rest si dispo sinon 60s
  */
 function computeEstimatedDurationMin(workout: any): number {
   if (!workout?.items) return 0;
@@ -105,7 +101,7 @@ function computeEstimatedDurationMin(workout: any): number {
     for (const set of item.sets) {
       const restSeconds =
         typeof set?.rest === "number" ? set.rest : 60; // fallback 60s
-      totalSec += restSeconds + 30; // 30s = temps d'exécution estimé
+      totalSec += restSeconds + 30; // 30s exécution de la série
     }
   }
 
@@ -114,51 +110,46 @@ function computeEstimatedDurationMin(workout: any): number {
 
 /**
  * computeProgressRatio(workout)
- * -> 1 si le workout est terminé
- * -> 0 sinon
- * Pour l'instant on se base juste sur finishedAt.
- * Plus tard on pourra faire "nb sets faits / nb sets total".
+ * Retourne un ratio entre 0 et 1.
+ * Ici : 1 = terminé (finishedAt existe), sinon 0.
  */
 function computeProgressRatio(workout: any): number {
   return workout?.finishedAt ? 1 : 0;
 }
 
 /* -------------------------------------------------
-   Composant principal : l'onglet "Workouts"
+   Composant principal : l'onglet Workouts
    ------------------------------------------------- */
 
 export default function WorkoutsTabScreen() {
   const router = useRouter();
 
-  // === Données venant du backend ===
+  // Données venant du backend
   const [items, setItems] = useState<Workout[]>([]);
   const [total, setTotal] = useState(0);
 
-  // === États UI / réseau ===
-  const [loading, setLoading] = useState(true); // chargement initial
+  // États UI / réseau
+  const [loading, setLoading] = useState(true); // premier chargement
   const [refreshing, setRefreshing] = useState(false); // pull-to-refresh
-  const [error, setError] = useState<string | null>(null); // erreur backend / réseau
+  const [error, setError] = useState<string | null>(null); // message erreur API
 
-  // === États pour le bandeau semaine ===
+  // Semaine / jour sélectionné pour la barre en haut
   const [weekStart, setWeekStart] = useState<Date>(() =>
     startOfWeek(new Date())
   );
   const [selectedDay, setSelectedDay] = useState<Date>(() => new Date());
 
-  // =====================================================
-  // load()
-  // Appelle GET /workouts via listWorkouts()
-  // Remplit items[] et total dans le state
-  // =====================================================
+  /**
+   * load()
+   * Va chercher les workouts via GET /workouts
+   * et remplit items[] + total
+   */
   const load = useCallback(async () => {
     try {
       setError(null);
       setLoading(true);
 
-      // listWorkouts() parle déjà à ton back via http()
-      // et renvoie { items, total }
-      const res = await listWorkouts();
-
+      const res = await listWorkouts(); // { items, total }
       setItems(res.items);
       setTotal(res.total ?? res.items.length);
     } catch (e: any) {
@@ -168,33 +159,35 @@ export default function WorkoutsTabScreen() {
     }
   }, []);
 
-  // Appel initial au montage de l'écran
+  // Chargement initial de l'écran
   useEffect(() => {
     load();
   }, [load]);
 
-  // Pull-to-refresh de la FlatList
+  /**
+   * onRefresh()
+   * Utilisé par le pull-to-refresh (glisser vers le bas).
+   */
   const onRefresh = useCallback(async () => {
     setRefreshing(true);
     await load();
     setRefreshing(false);
   }, [load]);
 
-  // =====================================================
-  // handleDelete(id)
-  // - Supprime côté backend (DELETE /workouts/:id)
-  // - Met à jour la liste locale sans recharger tout
-  // =====================================================
+  /**
+   * handleDelete(id)
+   * Supprime un workout :
+   * 1. appelle DELETE /workouts/:id
+   * 2. enlève ce workout du state local
+   */
   const handleDelete = useCallback(
     async (id: string) => {
       try {
-        await deleteWorkout(id); // backend OK
-        // On retire le workout supprimé du state local
+        await deleteWorkout(id);
         setItems((prev) => prev.filter((w) => w.id !== id));
         setTotal((prev) => Math.max(prev - 1, 0));
       } catch (e: any) {
         console.error("Erreur suppression", e?.message || e);
-        // plus tard: toast / Alert
       }
     },
     [setItems, setTotal]
@@ -202,16 +195,16 @@ export default function WorkoutsTabScreen() {
 
   const s = styles;
 
-  // =====================================================
-  // listContent
-  // Rendu dynamique:
-  // - spinner
-  // - message d'erreur
-  // - "aucun workout"
-  // - la FlatList de workouts
-  // =====================================================
+  /**
+   * listContent
+   * Rendu principal selon l'état:
+   * - chargement
+   * - erreur
+   * - vide
+   * - liste réelle
+   */
   const listContent = useMemo(() => {
-    // 1. état "chargement"
+    // 1. état "loading"
     if (loading)
       return (
         <View style={s.center}>
@@ -231,7 +224,7 @@ export default function WorkoutsTabScreen() {
         </View>
       );
 
-    // 3. état "pas de séances"
+    // 3. état "aucun entraînement"
     if (items.length === 0)
       return (
         <View style={s.emptyCard}>
@@ -243,7 +236,7 @@ export default function WorkoutsTabScreen() {
         </View>
       );
 
-    // 4. état normal -> liste des workouts
+    // 4. état normal -> liste
     return (
       <>
         <Text style={s.sectionTitle}>Workouts du jour</Text>
@@ -256,11 +249,10 @@ export default function WorkoutsTabScreen() {
           }
           contentContainerStyle={{
             gap: 12,
-            paddingBottom: 160, // espace bas pour pas cacher le dernier sous le FAB
+            paddingBottom: 160, // espace pour ne pas masquer par le FAB
           }}
           renderItem={({ item }) => {
-            // item = un workout venant du backend
-            // On calcule les infos affichées
+            // On calcule les infos affichées pour cette carte
             const totalSets = computeTotalSets(item);
             const estimatedDurationMin = computeEstimatedDurationMin(item);
             const progressRatio = computeProgressRatio(item);
@@ -268,13 +260,14 @@ export default function WorkoutsTabScreen() {
 
             return (
               <View style={s.workoutCard}>
-                {/* Ligne du haut : titre à gauche / poubelle à droite */}
+                {/* Ligne du haut : titre + bouton poubelle */}
                 <View style={s.cardHeaderRow}>
-                  {/* Titre cliquable -> ouvre le détail */}
+                  {/* Titre cliquable -> ouvrira le détail (étape 2) */}
                   <Pressable
                     style={{ flex: 1 }}
                     onPress={() => {
-                      // Besoin d'un écran /workouts/[id].tsx (Étape 2)
+                      // On pousse vers /workouts/[id]
+                      // L'écran sera fait à l'étape 2
                       router.push(`/workouts/${item.id}`);
                     }}
                   >
@@ -283,7 +276,7 @@ export default function WorkoutsTabScreen() {
                     </Text>
                   </Pressable>
 
-                  {/* Bouton supprimer -> appelle handleDelete */}
+                  {/* Bouton suppression -> handleDelete */}
                   <Pressable
                     onPress={() => {
                       handleDelete(item.id);
@@ -293,15 +286,28 @@ export default function WorkoutsTabScreen() {
                     <Ionicons
                       name="trash-outline"
                       size={20}
-                      color="#FF5C5C"
+                      color="#FF6B6B"
                     />
                   </Pressable>
                 </View>
 
-                {/* "~9 min  •  4 séries" */}
-                <Text style={s.workoutMeta}>
-                  ~{estimatedDurationMin} min  •  {totalSets} séries
-                </Text>
+                {/* Ligne méta sous le titre */}
+                {isDone ? (
+                  // Séance terminée
+                  <Text
+                    style={[
+                      s.workoutMeta,
+                      { color: "#12E29A" }, // vert "succès"
+                    ]}
+                  >
+                    Terminé ✅
+                  </Text>
+                ) : (
+                  // Séance pas terminée
+                  <Text style={s.workoutMeta}>
+                    ~{estimatedDurationMin} min  •  {totalSets} séries
+                  </Text>
+                )}
 
                 {/* Barre de progression */}
                 <View style={s.progressBarTrack}>
@@ -351,16 +357,14 @@ export default function WorkoutsTabScreen() {
     handleDelete,
   ]);
 
-  // =====================================================
   // Rendu global de l'écran
-  // =====================================================
   return (
     <SafeAreaView style={s.container} edges={["top", "bottom"]}>
-      {/* Header haut */}
+      {/* HEADER haut */}
       <View style={s.header}>
         <Text style={s.title}>Mes entraînements</Text>
 
-        {/* petit bouton calendrier à droite */}
+        {/* Bouton calendrier (placeholder) */}
         <Pressable
           style={s.iconBtn}
           onPress={() => {
@@ -372,7 +376,7 @@ export default function WorkoutsTabScreen() {
         </Pressable>
       </View>
 
-      {/* Bandeau semaine (scroll dans le temps visuellement) */}
+      {/* Barre semaine */}
       <WeekStrip
         weekStart={weekStart}
         selectedDay={selectedDay}
@@ -381,15 +385,16 @@ export default function WorkoutsTabScreen() {
         onSelectDay={setSelectedDay}
       />
 
+      {/* espace visuel */}
       <View style={{ height: 16 }} />
 
-      {/* Liste / vide / erreur / spinner */}
+      {/* Contenu dynamique (liste / vide / erreur / loader) */}
       {listContent}
 
-      {/* FAB flottant pour créer une nouvelle séance */}
+      {/* FAB flottant "+" (création séance -> étape 3) */}
       <Pressable
         onPress={() => {
-          router.push("/workouts/new"); // Étape 3
+          router.push("/workouts/new");
         }}
         style={s.fab}
       >
@@ -400,7 +405,8 @@ export default function WorkoutsTabScreen() {
 }
 
 /* -------------------------------------------------
-   Bandeau semaine
+   Composant WeekStrip
+   -> Le bandeau semaine (Dim Lun Mar ...)
    ------------------------------------------------- */
 function WeekStrip({
   weekStart,
@@ -415,7 +421,7 @@ function WeekStrip({
   onNextWeek: () => void;
   onSelectDay: (d: Date) => void;
 }) {
-  // Génére les 7 jours: [dim, lun, mar, ...]
+  // Jours de la semaine courante
   const days = Array.from({ length: 7 }, (_, i) => addDays(weekStart, i));
 
   return (
@@ -435,12 +441,14 @@ function WeekStrip({
               style={styles.dayItem}
               onPress={() => onSelectDay(d)}
             >
+              {/* pastille ronde du jour */}
               <View
                 style={[
                   styles.dayDot,
                   active && { backgroundColor: "#12E29A" },
                 ]}
               />
+              {/* label du jour (Dim, Lun, ...) */}
               <Text
                 style={[
                   styles.dayLabel,
@@ -463,32 +471,36 @@ function WeekStrip({
 }
 
 /* -------------------------------------------------
-   Styles
+   Styles (tous les styles inline sans thème externe)
    ------------------------------------------------- */
+
 const styles = StyleSheet.create({
+  // Conteneur global écran
   container: {
     flex: 1,
-    backgroundColor: "#0F1420",
+    backgroundColor: "#0F1420", // fond global
     paddingHorizontal: 16,
     position: "relative",
   },
 
+  // Header en haut (titre + bouton calendrier)
   header: {
     flexDirection: "row",
     justifyContent: "space-between",
     marginTop: 24,
-    marginBottom: 16,
+    marginBottom: 12,
     alignItems: "center",
   },
 
   title: {
     color: "#E6F0FF",
     fontSize: 22,
+    lineHeight: 28,
     fontWeight: "700",
   },
 
   iconBtn: {
-    backgroundColor: "rgba(255,255,255,0.05)",
+    backgroundColor: "rgba(255,255,255,0.05)", // léger overlay
     borderRadius: 12,
     paddingHorizontal: 10,
     paddingVertical: 10,
@@ -531,7 +543,7 @@ const styles = StyleSheet.create({
     width: 24,
     height: 24,
     borderRadius: 12,
-    backgroundColor: "#2A303F",
+    backgroundColor: "#1C1F2A", // pastille neutre
   },
 
   dayLabel: {
@@ -541,22 +553,31 @@ const styles = StyleSheet.create({
     fontWeight: "600",
   },
 
-  // Titre section "Workouts du jour"
+  // Titre de la section "Workouts du jour"
   sectionTitle: {
     color: "#E6F0FF",
+    fontSize: 16,
+    lineHeight: 22,
     fontWeight: "700",
     marginTop: 24,
-    marginBottom: 10,
+    marginBottom: 12,
   },
 
-  // Carte workout principale
+  // Carte workout
   workoutCard: {
     backgroundColor: "#121927",
     borderRadius: 16,
     padding: 16,
     borderWidth: 1,
     borderColor: "#232A3A",
-    gap: 8,
+    gap: 6,
+
+    // ombre douce
+    shadowColor: "#000",
+    shadowOpacity: 0.25,
+    shadowRadius: 8,
+    shadowOffset: { width: 0, height: 4 },
+    elevation: 6,
   },
 
   // Ligne du haut dans la carte: titre + poubelle
@@ -565,39 +586,44 @@ const styles = StyleSheet.create({
     alignItems: "center",
   },
 
-  // Bouton supprimer
+  // Bouton supprimer (poubelle rouge)
   deleteBtn: {
-    marginLeft: 8,
-    padding: 8,
-    borderRadius: 8,
-    backgroundColor: "rgba(255,0,0,0.07)", // léger fond rouge transparent
+    marginLeft: 6,
+    padding: 6,
+    borderRadius: 12,
+    backgroundColor: "rgba(255,0,0,0.07)",
   },
 
+  // Titre du workout
   workoutTitle: {
     color: "#E6F0FF",
     fontSize: 16,
     fontWeight: "700",
   },
 
+  // Texte sous le titre
   workoutMeta: {
     color: "#98A2B3",
     fontSize: 14,
     fontWeight: "500",
   },
 
+  // Barre de progression (track)
   progressBarTrack: {
     height: 4,
     borderRadius: 999,
-    backgroundColor: "#2A303F",
+    backgroundColor: "#1C1F2A",
     overflow: "hidden",
   },
 
+  // Barre de progression (remplissage vert)
   progressBarFill: {
     height: 4,
     borderRadius: 999,
     backgroundColor: "#12E29A",
   },
 
+  // Bouton "COMMENCER" / "TERMINÉ"
   startButton: {
     backgroundColor: "#12E29A",
     borderRadius: 12,
@@ -610,8 +636,10 @@ const styles = StyleSheet.create({
     color: "#061018",
     fontWeight: "700",
     fontSize: 15,
+    lineHeight: 18,
   },
 
+  // Variante visuelle si la séance est déjà finie
   startButtonDone: {
     backgroundColor: "transparent",
     borderWidth: 1,
@@ -625,7 +653,7 @@ const styles = StyleSheet.create({
   // États "vide", "erreur", etc.
   emoji: {
     fontSize: 36,
-    marginBottom: 8,
+    marginBottom: 6,
   },
 
   emptyCard: {
@@ -644,13 +672,13 @@ const styles = StyleSheet.create({
 
   totalText: {
     color: "#98A2B3",
-    marginTop: 8,
+    marginTop: 6,
   },
 
   cta: {
     backgroundColor: "#12E29A",
     paddingVertical: 8,
-    paddingHorizontal: 16,
+    paddingHorizontal: 12,
     borderRadius: 12,
     marginTop: 12,
   },
@@ -667,10 +695,10 @@ const styles = StyleSheet.create({
   },
 
   errorText: {
-    color: "#FF5C5C",
+    color: "#FF6B6B",
   },
 
-  // FAB flottant en bas à droite
+  // FAB flottant "+"
   fab: {
     position: "absolute",
     right: 24,
@@ -682,10 +710,12 @@ const styles = StyleSheet.create({
     alignItems: "center",
     justifyContent: "center",
     zIndex: 9999,
-    elevation: 50,
+
+    // ombre du bouton flottant
     shadowColor: "#000",
     shadowOpacity: 0.5,
     shadowRadius: 10,
     shadowOffset: { width: 0, height: 3 },
+    elevation: 50,
   },
 });
