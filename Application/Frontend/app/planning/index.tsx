@@ -1,7 +1,7 @@
 // app/planning/index.tsx
 import { useCallback, useEffect, useState } from "react";
 import { SafeAreaView } from "react-native-safe-area-context";
-import { Link, Stack } from "expo-router";
+import { Link, Stack, useRouter } from "expo-router";
 import {
   ActivityIndicator,
   FlatList,
@@ -20,6 +20,8 @@ import { listPlannings } from "@/api/planning"; // <-- ton client API existant
 import type { Planning } from "@/api/planning";
 
 export default function PlanningListScreen() {
+  const router = useRouter();
+
   const [items, setItems] = useState<Planning[]>([]);
   const [total, setTotal] = useState(0);
   const [loading, setLoading] = useState(true);
@@ -57,7 +59,22 @@ export default function PlanningListScreen() {
 
   return (
     <SafeAreaView style={s.container} edges={["top", "bottom"]}>
-      <Stack.Screen options={{ title: "Mes plannings" }} />
+      <Stack.Screen
+        options={{
+          title: "Mes plannings",
+          headerShown: true,
+          headerRight: () => (
+            <Pressable
+              onPress={() => router.push("/planning/new")}
+              style={{ paddingHorizontal: 8, paddingVertical: 4 }}
+            >
+              <Text style={{ color: theme.colors.primary, fontWeight: "700" }}>
+                Créer
+              </Text>
+            </Pressable>
+          ),
+        }}
+      />
 
       {loading ? (
         <View style={s.center}>
@@ -74,6 +91,11 @@ export default function PlanningListScreen() {
         <View style={s.emptyCard}>
           <Text style={s.emoji}>📅</Text>
           <Text style={s.emptyText}>Aucun planning</Text>
+          <Link href="/planning/new" asChild>
+            <Pressable style={[s.cta, { marginTop: layout.gap.sm }]}>
+              <Text style={s.ctaText}>Créer un planning</Text>
+            </Pressable>
+          </Link>
         </View>
       ) : (
         <FlatList
@@ -87,7 +109,8 @@ export default function PlanningListScreen() {
                 <Pressable style={s.card}>
                   <Text style={s.cardTitle}>{item.nom}</Text>
                   <Text style={s.cardSub}>
-                    du {new Date(item.debut).toLocaleDateString()} au {new Date(item.fin).toLocaleDateString()}
+                    du {new Date(item.debut).toLocaleDateString()} au{" "}
+                    {new Date(item.fin).toLocaleDateString()}
                   </Text>
                 </Pressable>
               </Link>
@@ -136,7 +159,6 @@ const styles = StyleSheet.create({
     paddingVertical: layout.gap.sm,
     paddingHorizontal: layout.gap.lg,
     borderRadius: layout.radius.md,
-    marginTop: layout.gap.sm,
   },
   ctaText: { ...typography.cta },
 
