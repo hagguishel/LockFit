@@ -17,6 +17,9 @@ build/
 
 # --- Env & secrets ---
 .env
+.env.local
+.env.prod
+.env.render
 .env.*.local
 .lockfit.env
 # exemples autorisés

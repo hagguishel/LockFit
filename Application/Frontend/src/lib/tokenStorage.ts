@@ -1,35 +1,53 @@
 // src/lib/tokenStorage.ts
 // ========================
-// Gestion centralisée du stockage sécurisé des tokens.
-// On utilise expo-secure-store qui chiffre les données côté appareil.
+// Gestion sécurisée des tokens avec expo-secure-store
 // ========================
 
-import * as SecureStore from "expo-secure-store";
-import type { Tokens } from "@/types/auth";
+import * as SecureStore from 'expo-secure-store';
+import { Platform } from 'react-native';
 
-const ACCESS_KEY = "if_tokens_access";
-const REFRESH_KEY = "if_tokens_refresh";
+const ACCESS_KEY = 'if_tokens_access';
+const REFRESH_KEY = 'if_tokens_refresh';
 
-// Une clé unique pour retrouver nos tokens dans le coffre sécurisé.
-// Astuce: préfixez avec le nom de votre app pour éviter les collisions.
-const KEY = "lockfit/tokens";
+// ⚠️ IMPORTANT : mêmes options en set/get/delete, sinon la lecture échoue
+const STORE_OPTS = Platform.OS === 'ios' ? { keychainService: 'lockfit' } : undefined;
 
-/** Sauvegarde les deux jetons de façon sécurisée. */
-export async function saveTokens(tokens: { access: string; refresh: string }) {
-  await SecureStore.setItemAsync(ACCESS_KEY, tokens.access, { keychainService: "lockfit" });
-  await SecureStore.setItemAsync(REFRESH_KEY, tokens.refresh, { keychainService: "lockfit" });
+export type StoredTokens = { access: string; refresh?: string | null };
+
+/** Sauvegarde les jetons (refresh optionnel) */
+export async function saveTokens(tokens: { access: string; refresh?: string | null }) {
+  console.log('💾 [STORAGE] Début sauvegarde tokens...', { hasAccess: !!tokens.access, hasRefresh: !!tokens.refresh });
+
+  // Nettoyage préalable (évite un ancien refresh résiduel)
+  await SecureStore.deleteItemAsync(ACCESS_KEY, STORE_OPTS);
+  await SecureStore.deleteItemAsync(REFRESH_KEY, STORE_OPTS);
+
+  await SecureStore.setItemAsync(ACCESS_KEY, tokens.access, STORE_OPTS);
+  if (tokens.refresh) {
+    await SecureStore.setItemAsync(REFRESH_KEY, tokens.refresh, STORE_OPTS);
+  }
+
+  const verify = await loadTokens();
+  console.log('🔎 [STORAGE] Vérif après écriture:', { access: !!verify?.access, refresh: !!verify?.refresh });
+
+  // Ne bloque pas sur l’absence de refresh : l’access suffit pour être “auth”
+  if (!verify?.access) throw new Error("Impossible de vérifier l’access token après écriture");
+  console.log('✅ [STORAGE] Tokens vérifiés');
 }
 
-/** Lit les jetons si présents, sinon null. */
-export async function loadTokens(): Promise<{ access: string; refresh: string } | null> {
-  const access = await SecureStore.getItemAsync(ACCESS_KEY);
-  const refresh = await SecureStore.getItemAsync(REFRESH_KEY);
-  if (!access || !refresh) return null;
-  return { access, refresh };
+/** Lecture des jetons */
+export async function loadTokens(): Promise<StoredTokens | null> {
+  const access  = await SecureStore.getItemAsync(ACCESS_KEY, STORE_OPTS);
+  const refresh = await SecureStore.getItemAsync(REFRESH_KEY, STORE_OPTS);
+  if (!access && !refresh) {
+    console.log('⚠️ [STORAGE] Tokens manquants:', { hasAccess: false, hasRefresh: false });
+    return null;
+  }
+  return { access: access ?? '', refresh: refresh ?? null };
 }
 
-/** Efface les jetons (déconnexion). */
+/** Suppression (logout) */
 export async function clearTokens() {
-  await SecureStore.deleteItemAsync(ACCESS_KEY);
-  await SecureStore.deleteItemAsync(REFRESH_KEY);
+  await SecureStore.deleteItemAsync(ACCESS_KEY, STORE_OPTS);
+  await SecureStore.deleteItemAsync(REFRESH_KEY, STORE_OPTS);
 }

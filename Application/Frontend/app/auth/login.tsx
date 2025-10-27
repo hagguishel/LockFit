@@ -1,6 +1,4 @@
-// app/auth/login.tsx
-// ÉCRAN DE CONNEXION "tout-en-un" (Expo Router)
-
+// app/auth/login.tsx - VERSION DEBUG
 import React, { useState } from "react";
 import { View, Text, TextInput, TouchableOpacity, ActivityIndicator, StyleSheet, Alert } from "react-native";
 import { useRouter, Link } from "expo-router";
@@ -9,47 +7,57 @@ import { login } from "@/api/auth";
 import { isMfaRequired } from "@/types/auth";
 import { saveTokens } from "@/lib/tokenStorage";
 
-// ⛳ Mode mock pour tests visuels (met à false quand tu branches le vrai backend)
 const MOCK_AUTH = false;
 
 export default function LoginRoute() {
   const router = useRouter();
-
-  // 🧱 États UI (formulaire & statut)
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [showPassword, setShowPassword] = useState(false);
   const [loading, setLoading] = useState(false);
 
-  // 👉 Bouton "Se connecter"
   async function onSubmit() {
     if (!email || !password || loading) return;
     setLoading(true);
+    
+    console.log("🔵 [LOGIN] Tentative de connexion...", { email });
+    
     try {
       if (MOCK_AUTH) {
-        // 🔌 Bypass complet : on simule un délai puis on ouvre les onglets
         await new Promise((r) => setTimeout(r, 400));
-        // (option) tu peux sauvegarder des tokens factices si tu veux tester les gardes plus tard
-        // await saveTokens({ access: "fake", refresh: "fake" });
         router.replace("/(tabs)");
         return;
       }
 
       // ======= flux réel =======
+      console.log("🔵 [LOGIN] Appel de login()...");
       const res = await login(email, password);
+      console.log("✅ [LOGIN] Réponse reçue:", JSON.stringify(res, null, 2));
 
-      // Cas 1 : MFA requis → on passe le tempSessionId à l’écran MFA
+      // Cas 1 : MFA requis
       if (isMfaRequired(res)) {
+        console.log("🔵 [LOGIN] MFA requis, redirection...");
         router.push({ pathname: "/auth/mfa", params: { sid: res.tempSessionId, email } });
         return;
       }
 
-      // Cas 2 : Succès direct (tokens reçus)
+      // Cas 2 : Succès direct
+      console.log("🔵 [LOGIN] Sauvegarde des tokens...");
       await saveTokens(res.tokens);
+      console.log("✅ [LOGIN] Tokens sauvegardés avec vérification");
+      
+      // Petit délai pour laisser React/Expo digérer le changement d'état
+      await new Promise(r => setTimeout(r, 150));
+      
+      console.log("🔵 [LOGIN] Navigation vers (tabs)...");
       router.replace("/(tabs)");
       return;
     } catch (e: any) {
-      // Erreurs normalisées (voir src/api/auth.ts)
+      console.error("❌ [LOGIN] ERREUR COMPLÈTE:", e);
+      console.error("❌ [LOGIN] Status:", e?.status);
+      console.error("❌ [LOGIN] Code:", e?.error);
+      console.error("❌ [LOGIN] Message:", e?.message);
+      
       const status = e?.status ?? 0;
       const code = e?.error ?? "UNKNOWN";
 
@@ -58,17 +66,16 @@ export default function LoginRoute() {
       } else if (status === 429 || code === "TOO_MANY_ATTEMPTS") {
         Alert.alert("Erreur", "Trop de tentatives. Réessayez plus tard.");
       } else if (status === 0 || code === "NETWORK_ERROR") {
-        Alert.alert("Erreur réseau", "Vérifie ta connexion.");
+        Alert.alert("Erreur réseau", `Vérifie ta connexion.\n\nDétails: ${e?.message || 'Aucun détail'}`);
       } else {
-        Alert.alert("Erreur", "Erreur inattendue. Réessaie.");
+        Alert.alert("Erreur", `Erreur inattendue (${status}).\n\n${e?.message || 'Aucun détail'}`);
       }
     } finally {
       setLoading(false);
-      setPassword(""); // petit plus UX : on nettoie le mot de passe
+      setPassword("");
     }
   }
 
-  // 🎯 Boutons “Google/Apple” (pour démo/placeholder)
   function handleDemoLogin() {
     const e = "demo@lockfit.app";
     const p = "demo123";
@@ -144,7 +151,7 @@ export default function LoginRoute() {
           <Text style={styles.linkGreen}>Mot de passe oublié ?</Text>
         </TouchableOpacity>
 
-        {/* Test MFA (optionnel pour valider la navigation MFA) */}
+        {/* Test MFA */}
         <TouchableOpacity
           style={[styles.outlineBtn, { marginTop: 8 }]}
           onPress={() => router.push({ pathname: "/auth/mfa", params: { sid: "demo-sid-123456" } })}
@@ -166,13 +173,13 @@ export default function LoginRoute() {
           <View style={styles.separator} />
         </View>
 
-        {/* Boutons sociaux (placeholder) */}
+        {/* Boutons sociaux */}
         <View style={styles.socialRow}>
           <TouchableOpacity style={styles.socialBtn} onPress={handleDemoLogin}>
             <Text style={styles.socialBtnText}>G  Google</Text>
           </TouchableOpacity>
           <TouchableOpacity style={styles.socialBtn} onPress={handleDemoLogin}>
-            <Text style={styles.socialBtnText}>  Apple</Text>
+            <Text style={styles.socialBtnText}>  Apple</Text>
           </TouchableOpacity>
         </View>
 
@@ -186,14 +193,13 @@ export default function LoginRoute() {
   );
 }
 
-/* 🎨 Thème rapide (tu peux ajuster ces valeurs au même endroit) */
-const BG = "#0b0b1a";        // fond sombre
-const CARD = "#0c0d20";      // carte sombre
-const INPUT_BG = "#1f2336";  // champs
+const BG = "#0b0b1a";
+const CARD = "#0c0d20";
+const INPUT_BG = "#1f2336";
 const INPUT_BORDER = "#323856";
 const TEXT = "#e6e6f0";
 const MUTED = "#9aa0a6";
-const ACCENT = "#00ff88";    // vert fluo
+const ACCENT = "#00ff88";
 
 const styles = StyleSheet.create({
   screen: { flex: 1, backgroundColor: BG, paddingHorizontal: 16, paddingVertical: 24, justifyContent: "center" },
