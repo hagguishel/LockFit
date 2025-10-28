@@ -78,10 +78,20 @@ function isSameDay(a: Date, b: Date) {
 function computeTotalSets(workout: any): number {
   if (!workout?.items) return 0;
 
-  return workout.items.reduce((acc: number, item: any) => {
+  const total = workout.items.reduce((acc: number, item: any) => {
     const count = Array.isArray(item?.sets) ? item.sets.length : 0;
     return acc + count;
   }, 0);
+
+  console.log(
+    "🧮 [LockFit] computeTotalSets",
+    workout?.id,
+    "=>",
+    total,
+    "sets"
+  );
+
+  return total;
 }
 
 /**
@@ -105,7 +115,15 @@ function computeEstimatedDurationMin(workout: any): number {
     }
   }
 
-  return Math.ceil(totalSec / 60);
+  const min = Math.ceil(totalSec / 60);
+  console.log(
+    "⏱️ [LockFit] computeEstimatedDurationMin",
+    workout?.id,
+    "=> ~",
+    min,
+    "min"
+  );
+  return min;
 }
 
 /**
@@ -114,7 +132,14 @@ function computeEstimatedDurationMin(workout: any): number {
  * Ici : 1 = terminé (finishedAt existe), sinon 0.
  */
 function computeProgressRatio(workout: any): number {
-  return workout?.finishedAt ? 1 : 0;
+  const ratio = workout?.finishedAt ? 1 : 0;
+  console.log(
+    "📊 [LockFit] computeProgressRatio",
+    workout?.id,
+    "=>",
+    ratio
+  );
+  return ratio;
 }
 
 /* -------------------------------------------------
@@ -123,6 +148,8 @@ function computeProgressRatio(workout: any): number {
 
 export default function WorkoutsTabScreen() {
   const router = useRouter();
+
+  console.log("📱 [LockFit] <WorkoutsTabScreen> render start");
 
   // Données venant du backend
   const [items, setItems] = useState<Workout[]>([]);
@@ -139,28 +166,47 @@ export default function WorkoutsTabScreen() {
   );
   const [selectedDay, setSelectedDay] = useState<Date>(() => new Date());
 
+  console.log("🔄 [LockFit] state snapshot", {
+    loading,
+    refreshing,
+    error,
+    total,
+    itemsCount: items.length,
+    weekStart: weekStart.toISOString(),
+    selectedDay: selectedDay.toISOString(),
+  });
+
   /**
    * load()
    * Va chercher les workouts via GET /workouts
    * et remplit items[] + total
    */
   const load = useCallback(async () => {
+    console.log("🌐 [LockFit] load() -> fetching workouts...");
     try {
       setError(null);
       setLoading(true);
 
       const res = await listWorkouts(); // { items, total }
+      console.log("✅ [LockFit] /workouts OK", {
+        total: res.total,
+        itemsCount: res.items?.length,
+      });
+
       setItems(res.items);
       setTotal(res.total ?? res.items.length);
     } catch (e: any) {
+      console.error("❌ [LockFit] /workouts FAILED:", e?.message || e);
       setError(e?.message || "Erreur de chargement");
     } finally {
       setLoading(false);
+      console.log("🏁 [LockFit] load() done");
     }
   }, []);
 
   // Chargement initial de l'écran
   useEffect(() => {
+    console.log("▶️ [LockFit] useEffect[mount] -> initial load()");
     load();
   }, [load]);
 
@@ -169,9 +215,11 @@ export default function WorkoutsTabScreen() {
    * Utilisé par le pull-to-refresh (glisser vers le bas).
    */
   const onRefresh = useCallback(async () => {
+    console.log("🔁 [LockFit] onRefresh() called");
     setRefreshing(true);
     await load();
     setRefreshing(false);
+    console.log("🔁 [LockFit] onRefresh() done");
   }, [load]);
 
   /**
@@ -182,12 +230,31 @@ export default function WorkoutsTabScreen() {
    */
   const handleDelete = useCallback(
     async (id: string) => {
+      console.warn("🗑 [LockFit] handleDelete()", id);
       try {
         await deleteWorkout(id);
-        setItems((prev) => prev.filter((w) => w.id !== id));
-        setTotal((prev) => Math.max(prev - 1, 0));
+        console.log("🗑✅ [LockFit] deleteWorkout OK", id);
+
+        setItems((prev) => {
+          const next = prev.filter((w) => w.id !== id);
+          console.log(
+            "📉 [LockFit] items after delete",
+            next.map((w) => w.id)
+          );
+          return next;
+        });
+
+        setTotal((prev) => {
+          const nextTotal = Math.max(prev - 1, 0);
+          console.log("📉 [LockFit] total after delete", nextTotal);
+          return nextTotal;
+        });
       } catch (e: any) {
-        console.error("Erreur suppression", e?.message || e);
+        console.error(
+          "❌ [LockFit] deleteWorkout FAILED",
+          id,
+          e?.message || e
+        );
       }
     },
     [setItems, setTotal]
@@ -204,6 +271,13 @@ export default function WorkoutsTabScreen() {
    * - liste réelle
    */
   const listContent = useMemo(() => {
+    console.log("🧠 [LockFit] render listContent()", {
+      loading,
+      error,
+      itemsCount: items.length,
+      total,
+    });
+
     // 1. état "loading"
     if (loading)
       return (
@@ -218,7 +292,13 @@ export default function WorkoutsTabScreen() {
         <View style={s.emptyCard}>
           <Text style={s.errorText}>{error}</Text>
 
-          <Pressable onPress={load} style={s.cta}>
+          <Pressable
+            onPress={() => {
+              console.log("♻️ [LockFit] retry press");
+              load();
+            }}
+            style={s.cta}
+          >
             <Text style={s.ctaText}>Réessayer</Text>
           </Pressable>
         </View>
@@ -252,6 +332,12 @@ export default function WorkoutsTabScreen() {
             paddingBottom: 160, // espace pour ne pas masquer par le FAB
           }}
           renderItem={({ item }) => {
+            console.log("🎴 [LockFit] renderItem workout", {
+              id: item.id,
+              title: item.title,
+              finishedAt: item.finishedAt,
+            });
+
             // On calcule les infos affichées pour cette carte
             const totalSets = computeTotalSets(item);
             const estimatedDurationMin = computeEstimatedDurationMin(item);
@@ -266,6 +352,10 @@ export default function WorkoutsTabScreen() {
                   <Pressable
                     style={{ flex: 1 }}
                     onPress={() => {
+                      console.log(
+                        "➡️ [LockFit] open workout detail",
+                        item.id
+                      );
                       // On pousse vers /workouts/[id]
                       // L'écran sera fait à l'étape 2
                       router.push(`/workouts/${item.id}`);
@@ -279,6 +369,10 @@ export default function WorkoutsTabScreen() {
                   {/* Bouton suppression -> handleDelete */}
                   <Pressable
                     onPress={() => {
+                      console.log(
+                        "🗑 [LockFit] delete press",
+                        item.id
+                      );
                       handleDelete(item.id);
                     }}
                     style={s.deleteBtn}
@@ -322,6 +416,10 @@ export default function WorkoutsTabScreen() {
                 {/* Bouton COMMENCER / TERMINÉ */}
                 <Pressable
                   onPress={() => {
+                    console.log(
+                      "▶️ [LockFit] start/continue workout",
+                      item.id
+                    );
                     router.push(`/workouts/${item.id}`);
                   }}
                   style={[s.startButton, isDone && s.startButtonDone]}
@@ -368,7 +466,7 @@ export default function WorkoutsTabScreen() {
         <Pressable
           style={s.iconBtn}
           onPress={() => {
-            console.log("calendar!");
+            console.log("🗓 [LockFit] calendar btn press");
             // plus tard -> router.push('/calendar')
           }}
         >
@@ -380,9 +478,18 @@ export default function WorkoutsTabScreen() {
       <WeekStrip
         weekStart={weekStart}
         selectedDay={selectedDay}
-        onPrevWeek={() => setWeekStart(addDays(weekStart, -7))}
-        onNextWeek={() => setWeekStart(addDays(weekStart, +7))}
-        onSelectDay={setSelectedDay}
+        onPrevWeek={() => {
+          console.log("⬅️ [LockFit] prev week");
+          setWeekStart(addDays(weekStart, -7));
+        }}
+        onNextWeek={() => {
+          console.log("➡️ [LockFit] next week");
+          setWeekStart(addDays(weekStart, +7));
+        }}
+        onSelectDay={(d) => {
+          console.log("📅 [LockFit] select day", d.toISOString());
+          setSelectedDay(d);
+        }}
       />
 
       {/* espace visuel */}
@@ -394,6 +501,7 @@ export default function WorkoutsTabScreen() {
       {/* FAB flottant "+" (création séance -> étape 3) */}
       <Pressable
         onPress={() => {
+          console.log("➕ [LockFit] FAB press -> new workout");
           router.push("/workouts/new");
         }}
         style={s.fab}
@@ -421,6 +529,11 @@ function WeekStrip({
   onNextWeek: () => void;
   onSelectDay: (d: Date) => void;
 }) {
+  console.log("🗓 [LockFit] <WeekStrip> render", {
+    weekStart: weekStart.toISOString(),
+    selectedDay: selectedDay.toISOString(),
+  });
+
   // Jours de la semaine courante
   const days = Array.from({ length: 7 }, (_, i) => addDays(weekStart, i));
 
@@ -439,7 +552,14 @@ function WeekStrip({
             <Pressable
               key={i}
               style={styles.dayItem}
-              onPress={() => onSelectDay(d)}
+              onPress={() => {
+                console.log(
+                  "📍 [LockFit] tap day",
+                  daysLabels[i],
+                  d.toISOString()
+                );
+                onSelectDay(d);
+              }}
             >
               {/* pastille ronde du jour */}
               <View
