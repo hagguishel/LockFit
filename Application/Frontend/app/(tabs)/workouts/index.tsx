@@ -65,13 +65,6 @@ function isSameDay(a: Date, b: Date) {
     a.getDate() === b.getDate()
   );
 }
-// YYYY-MM-DD sans timezone
-function fmtDate(d: Date) {
-  const y = d.getFullYear();
-  const m = String(d.getMonth() + 1).padStart(2, "0");
-  const day = String(d.getDate()).padStart(2, "0");
-  return `${y}-${m}-${day}`;
-}
 
 /* -------------------------------------------------
    Helpers produit (calcul affichage)
@@ -160,12 +153,11 @@ export default function WorkoutsTabScreen() {
       setItems(res.items);
       setTotal(res.total ?? res.items.length);
     } catch (e: any) {
-      if (e instanceof HttpError) setError(`${e.status} — ${e.message}`);
-      else setError(e?.message || "Erreur de chargement");
+      setError(e?.message || "Erreur de chargement");
     } finally {
       setLoading(false);
     }
-  }, [weekStart]);
+  }, []);
 
   // Chargement initial de l'écran
   useEffect(() => {
@@ -178,11 +170,8 @@ export default function WorkoutsTabScreen() {
    */
   const onRefresh = useCallback(async () => {
     setRefreshing(true);
-    try {
-      await load();
-    } finally {
-      setRefreshing(false);
-    }
+    await load();
+    setRefreshing(false);
   }, [load]);
 
   /**

@@ -1,503 +1,467 @@
-// app/workouts/[id].tsx
+// Écran détail d'un entraînement
+// Fichier : app/(tabs)/workouts/[id].tsx
 
 import { useCallback, useEffect, useMemo, useState } from "react";
+import { SafeAreaView } from "react-native-safe-area-context";
 import {
   ActivityIndicator,
-  Alert,
-  RefreshControl,
-  ScrollView,
+  FlatList,
+  Pressable,
   StyleSheet,
   Text,
   View,
-  Pressable,
-  TextInput,
 } from "react-native";
-import { SafeAreaView } from "react-native-safe-area-context";
-import {
-  Stack,
-  useLocalSearchParams,
-  useFocusEffect,
-  useRouter,
-} from "expo-router";
-import {
-  getWorkout,
-  finishWorkout,
-  type Workout,
-  addWorkoutItem,
-} from "../../../src/lib/workouts";
+import { Ionicons } from "@expo/vector-icons";
+import { useLocalSearchParams, useRouter } from "expo-router";
+
+// à ajouter dans ton lib/workouts.ts
+// getWorkout(id): GET /workouts/:id -> Workout
+// type Workout déjà exporté
+import { getWorkout, type Workout } from "@/lib/workouts";
+
+/* -------------------------------------------------
+   Helpers affichage / calcul
+   ------------------------------------------------- */
+
+function computeTotalSets(workout: Workout | null): number {
+  if (!workout?.items) return 0;
+  return workout.items.reduce((acc, item) => {
+    const n = Array.isArray(item?.sets) ? item.sets.length : 0;
+    return acc + n;
+  }, 0);
+}
+
+function computeProgressRatio(workout: Workout | null): number {
+  return workout?.finishedAt ? 1 : 0;
+}
+
+/* -------------------------------------------------
+   Composant principal : WorkoutDetailScreen
+   ------------------------------------------------- */
 
 export default function WorkoutDetailScreen() {
-  const { id } = useLocalSearchParams<{ id: string }>();
   const router = useRouter();
+  const { id } = useLocalSearchParams<{ id: string }>();
 
-  const [data, setData] = useState<Workout | null>(null);
+  const [workout, setWorkout] = useState<Workout | null>(null);
   const [loading, setLoading] = useState(true);
-  const [refreshing, setRefreshing] = useState(false);
-  const [finishing, setFinishing] = useState(false);
+  const [error, setError] = useState<string | null>(null);
 
-  // form ajout exercice
-  const [exId, setExId] = useState("");
-  const [reps, setReps] = useState("10");
-  const [weight, setWeight] = useState("");
-  const [rest, setRest] = useState("");
-  const [adding, setAdding] = useState(false);
-
-  // suivi local des sets cochés
-  const [doneSets, setDoneSets] = useState<Record<string, Set<number>>>({});
-
-  // clé unique d'un exercice pour le suivi des sets cochés
-  const keyFor = useCallback(
-    (exerciseId: string, order: number) => `${exerciseId}-${order}`,
-    []
-  );
-
-  // toggle (cocher / décocher) une série
-  const toggleSet = useCallback(
-    (exerciseId: string, order: number, setIndex: number) => {
-      const k = keyFor(exerciseId, order);
-      setDoneSets((prev) => {
-        const copy = { ...prev };
-        const s = new Set(copy[k] ?? []);
-        if (s.has(setIndex)) {
-          s.delete(setIndex);
-        } else {
-          s.add(setIndex);
-        }
-        copy[k] = s;
-        return copy;
-      });
-    },
-    [keyFor]
-  );
-
-  // bouton "valider le prochain set"
-  const nextSet = useCallback(
-    (exerciseId: string, order: number, totalSets: number) => {
-      const k = keyFor(exerciseId, order);
-      const s = doneSets[k] ?? new Set<number>();
-      const next = [...Array(totalSets).keys()].find((i) => !s.has(i));
-      if (next !== undefined) {
-        toggleSet(exerciseId, order, next);
-      }
-    },
-    [doneSets, keyFor, toggleSet]
-  );
-
-  // charge le workout depuis l'API
+  // charge l'entraînement par ID
   const load = useCallback(async () => {
     if (!id) return;
     try {
+      setError(null);
       setLoading(true);
-      const res = await getWorkout(String(id));
-      setData(res);
+      const w = await getWorkout(id);
+      setWorkout(w);
     } catch (e: any) {
-      if (e instanceof HttpError) Alert.alert("Erreur", `${e.status} — ${e.message}`);
-      else Alert.alert("Erreur", e?.message || "Chargement impossible");
+      setError(e?.message || "Impossible de charger l'entraînement");
     } finally {
       setLoading(false);
     }
   }, [id]);
 
-  // initial
   useEffect(() => {
     load();
   }, [load]);
 
-  // re-load on focus
-  useFocusEffect(
-    useCallback(() => {
-      load();
-    }, [load])
+  const s = styles;
+
+  // Infos calculées
+  const totalSets = useMemo(() => computeTotalSets(workout), [workout]);
+  const progressRatio = useMemo(
+    () => computeProgressRatio(workout),
+    [workout]
   );
+  const isDone = progressRatio === 1;
 
-  // Pull to refresh
-  const onRefresh = useCallback(async () => {
-    setRefreshing(true);
-    await load();
-    setRefreshing(false);
-  }, [load]);
-
-  // Marquer la séance comme terminée
-  const onFinish = useCallback(async () => {
-    if (!data || data.finishedAt) return;
-
-    setFinishing(true);
-
-    // Optimiste: on marque terminé localement tout de suite
-    const previous = data;
-    setData({ ...data, finishedAt: new Date().toISOString() });
-
-    try {
-      await finishWorkout(String(id));
-      Alert.alert("Séance terminée ✅");
-    } catch (e: any) {
-      // Rollback si erreur
-      setData(previous);
-      Alert.alert("Erreur", e?.message || "Impossible de terminer");
-    } finally {
-      setFinishing(false);
-    }
-  }, [data, id]);
-
-  // Ajouter un exercice à la séance
-  const onAddItem = useCallback(async () => {
-    const exerciseId = exId.trim();
-    const r = Number(reps);
-    const wkg = weight ? Number(weight) : undefined;
-    const rs = rest ? Number(rest) : undefined;
-
-    if (!exerciseId) {
-      Alert.alert("Exercice requis", "Renseigne un exerciseId.");
-      return;
-    }
-
-    if (!Number.isFinite(r) || r <= 0) {
-      Alert.alert(
-        "Série invalide",
-        "Indique un nombre de répétitions valide (> 0)."
-      );
-      return;
-    }
-
-    try {
-      setAdding(true);
-      const updated = await addWorkoutItem(String(id), {
-        exerciseId,
-        reps: r,
-        weight: wkg,
-        rest: rs,
-      });
-
-      // si l'API renvoie le workout complet mis à jour -> on le met direct
-      if (updated?.items && Array.isArray(updated.items)) {
-        setData(updated);
-      } else {
-        // sinon on refetch proprement
-        await load();
-      }
-
-      // reset du formulaire
-      setExId("");
-      setReps("10");
-      setWeight("");
-      setRest("");
-
-      Alert.alert("OK", "Exercice ajouté.");
-    } catch (e: any) {
-      Alert.alert(
-        "Erreur",
-        e?.message || "Impossible d'ajouter l'exercice."
-      );
-    } finally {
-      setAdding(false);
-    }
-  }, [exId, reps, weight, rest, id, load]);
-
-  // Titre affiché dans le header natif
-  const title = data?.title || "Séance";
-
-  // Texte statut (terminée ou pas)
-  const finishedAtText = useMemo(() => {
-    if (!data?.finishedAt) return "🕓 En cours";
-    const d = new Date(data.finishedAt);
-    return `✅ Terminée le ${d.toLocaleDateString()} ${d.toLocaleTimeString()}`;
-  }, [data?.finishedAt]);
-
-  // Sécurité pendant le tout premier chargement
-  if (loading && !data) {
+  // Rendu de CHAQUE exercice dans la FlatList
+  const renderExercise = useCallback(({ item, index }: { item: any; index: number }) => {
     return (
-      <SafeAreaView style={s.center} edges={["top", "bottom"]}>
-        <ActivityIndicator />
+      <View style={s.exerciseCard}>
+        {/* nom de l'exercice */}
+        <Text style={s.exerciseName}>
+          {index + 1}. {item.exerciseName || "Exercice"}
+        </Text>
+
+        {/* séries */}
+        {Array.isArray(item.sets) && item.sets.length > 0 ? (
+          <View style={s.setsContainer}>
+            {item.sets.map((set: any, i: number) => (
+              <View key={i} style={s.setRow}>
+                <Text style={s.setIndex}>S{i + 1}</Text>
+
+                <Text style={s.setDetail}>
+                  {set.reps ?? "?"} reps
+                  {typeof set.weight === "number"
+                    ? ` @ ${set.weight}kg`
+                    : ""}
+                </Text>
+
+                <Text style={s.setRest}>
+                  {typeof set.rest === "number"
+                    ? `${set.rest}s repos`
+                    : "repos ?"}
+                </Text>
+
+                {/* état (si on veut marquer terminé plus tard) */}
+                {set.done ? (
+                  <Ionicons
+                    name="checkmark-circle"
+                    size={18}
+                    color="#12E29A"
+                  />
+                ) : (
+                  <Ionicons
+                    name="radio-button-off"
+                    size={18}
+                    color="#98A2B3"
+                  />
+                )}
+              </View>
+            ))}
+          </View>
+        ) : (
+          <Text style={s.noSets}>Aucune série définie</Text>
+        )}
+      </View>
+    );
+  }, []);
+
+  /* -------------------------------------------------
+     Rendu principal de l'écran
+     ------------------------------------------------- */
+
+  // 1. état chargement
+  if (loading) {
+    return (
+      <SafeAreaView style={s.container} edges={["top", "bottom"]}>
+        <HeaderBar title="Détail entraînement" onBack={() => router.back()} />
+        <View style={s.center}>
+          <ActivityIndicator />
+        </View>
       </SafeAreaView>
     );
   }
 
-  // On est prêt à afficher l'écran
+  // 2. état erreur
+  if (error || !workout) {
+    return (
+      <SafeAreaView style={s.container} edges={["top", "bottom"]}>
+        <HeaderBar title="Détail entraînement" onBack={() => router.back()} />
+
+        <View style={s.errorCard}>
+          <Text style={s.errorText}>{error || "Workout introuvable"}</Text>
+
+          <Pressable style={s.reloadBtn} onPress={load}>
+            <Text style={s.reloadBtnText}>Réessayer</Text>
+          </Pressable>
+        </View>
+      </SafeAreaView>
+    );
+  }
+
+  // 3. état normal
   return (
     <SafeAreaView style={s.container} edges={["top", "bottom"]}>
-      <Stack.Screen options={{ title }} />
+      {/* HEADER haut avec retour */}
+      <HeaderBar
+        title={workout.title || "Sans nom"}
+        onBack={() => router.back()}
+      />
 
-      <ScrollView
-        contentContainerStyle={{ paddingBottom: 24 }}
-        refreshControl={
-          <RefreshControl refreshing={refreshing} onRefresh={onRefresh} />
-        }
-      >
-        {/* Carte d'info */}
-        <View style={s.card}>
-          {data?.note ? <Text style={s.note}>{data.note}</Text> : null}
-          <Text style={s.status}>{finishedAtText}</Text>
-        </View>
-
-        {/* Action "marquer terminé" */}
-        {!data?.finishedAt && (
-          <Pressable style={[s.cta, finishing && { opacity: 0.6 }]} onPress={onFinish} disabled={finishing}>
-            <Text style={s.ctaText}>{finishing ? "Validation…" : "Marquer terminé"}</Text>
-          </Pressable>
-        )}
-
-        {/* Liste des exercices */}
-        <View style={s.card}>
-          <Text style={s.sectionTitle}>Exercices</Text>
-
-          {data?.items && data.items.length > 0 ? (
-            data.items.map((it, idx) => {
-              const k = keyFor(it.exerciseId, it.order);
-              const done = doneSets[k] ?? new Set<number>();
-              const sets = it.sets ?? [];
-
-              return (
-                <View
-                  key={`${it.exerciseId}-${it.order}-${idx}`}
-                  style={s.exerciseItem}
-                >
-                  <View style={s.exerciseHeader}>
-                    <Text style={s.exerciseTitle}>
-                      #{it.order} - {it.exerciseId}
-                    </Text>
-                    <Text style={s.progressText}>
-                      {done.size}/{sets.length}
-                    </Text>
-                  </View>
-
-                  {sets.map((set, i) => {
-                    const isDone = done.has(i);
-                    const isDisabled = !!data?.finishedAt;
-                    return (
-                      <Pressable
-                        key={i}
-                        onPress={() =>
-                          !isDisabled &&
-                          toggleSet(it.exerciseId, it.order, i)
-                        }
-                        style={s.setRow}
-                        disabled={isDisabled}
-                      >
-                        <Text
-                          style={{
-                            color: isDone ? "#12E29A" : "#98A2B3",
-                          }}
-                        >
-                          {isDone ? "✓ " : "• "}
-                          Série {i + 1}: {set.reps} reps
-                          {typeof set.weight === "number"
-                            ? ` @${set.weight}kg`
-                            : ""}
-                          {typeof set.rest === "number"
-                            ? ` (repos ${set.rest}s)`
-                            : ""}
-                        </Text>
-                      </Pressable>
-                    );
-                  })}
-
-                  {(it.sets?.length ?? 0) > 0 && !data?.finishedAt && (
-                    <Pressable
-                      onPress={() =>
-                        nextSet(it.exerciseId, it.order, it.sets!.length)
-                      }
-                      style={s.nextSetBtn}
-                    >
-                      <Text style={s.ctaText}>Valider le prochain set</Text>
-                    </Pressable>
-                  )}
-                </View>
-              );
-            })
-          ) : (
-            <Text style={{ color: "#98A2B3" }}>
-              Aucun exercice pour l’instant.
+      {/* petit résumé */}
+      <View style={s.summaryCard}>
+        <View style={{ flex: 1 }}>
+          {isDone ? (
+            <Text style={[s.statusText, { color: "#12E29A" }]}>
+              Terminé ✅
             </Text>
+          ) : (
+            <Text style={s.statusText}>Planifié / En cours</Text>
           )}
+
+          <Text style={s.metaText}>
+            {totalSets} séries
+          </Text>
         </View>
 
-        {/* Formulaire d'ajout d'exercice */}
-        <View style={s.card}>
-          <Text style={s.sectionTitle}>+ Ajouter un exercice</Text>
-
-          <Text style={s.label}>exerciseId</Text>
-          <TextInput
-            value={exId}
-            onChangeText={setExId}
-            placeholder="ex: ex_123"
-            placeholderTextColor="#6B7280"
-            style={s.input}
-            autoCapitalize="none"
-            editable={!data?.finishedAt}
-          />
-
-          <Text style={s.label}>Répétitions</Text>
-          <TextInput
-            value={reps}
-            onChangeText={setReps}
-            keyboardType="numeric"
-            placeholder="10"
-            placeholderTextColor="#6B7280"
-            style={s.input}
-            editable={!data?.finishedAt}
-          />
-
-          <Text style={s.label}>Poids (kg)</Text>
-          <TextInput
-            value={weight}
-            onChangeText={setWeight}
-            keyboardType="numeric"
-            placeholder="ex: 60"
-            placeholderTextColor="#6B7280"
-            style={s.input}
-            editable={!data?.finishedAt}
-          />
-
-          <Text style={s.label}>Temps de repos (sec)</Text>
-          <TextInput
-            value={rest}
-            onChangeText={setRest}
-            keyboardType="numeric"
-            placeholder="ex: 90"
-            placeholderTextColor="#6B7280"
-            style={s.input}
-            editable={!data?.finishedAt}
-          />
-
-          <Pressable
+        {/* bouton COMMENCER / TERMINÉ */}
+        <Pressable
+          style={[s.bigActionBtn, isDone && s.bigActionBtnDone]}
+          onPress={() => {
+            // plus tard : lancer la session live / marquer terminé
+            console.log("start / continue workout", workout.id);
+          }}
+        >
+          <Text
             style={[
-              s.cta,
-              (adding || !!data?.finishedAt) && { opacity: 0.6 },
+              s.bigActionBtnText,
+              isDone && s.bigActionBtnTextDone,
             ]}
-            onPress={onAddItem}
-            disabled={adding || !!data?.finishedAt}
           >
-            <Text style={s.ctaText}>{adding ? "Ajout…" : "Ajouter l'exercice"}</Text>
-          </Pressable>
-
-          {!!data?.finishedAt && (
-            <Text style={s.disabledText}>La séance est terminée — ajout désactivé.</Text>
-          )}
-        </View>
-
-        {/* Reset progression */}
-        {Object.keys(doneSets).length > 0 && !data?.finishedAt && (
-          <Pressable
-            onPress={() => {
-              Alert.alert(
-                "Réinitialiser la progression",
-                "Es-tu sûr de vouloir réinitialiser toutes les séries validées ?",
-                [
-                  { text: "Annuler", style: "cancel" },
-                  {
-                    text: "Réinitialiser",
-                    onPress: () => setDoneSets({}),
-                    style: "destructive",
-                  },
-                ]
-              );
-            }}
-            style={[s.secondary, { marginBottom: 8 }]}
-          >
-            <Text style={[s.secondaryText, { color: "#EF4444" }]}>Réinitialiser la progression</Text>
-          </Pressable>
-        )}
-
-        {/* Retour */}
-        <Pressable style={s.secondary} onPress={() => router.back()}>
-          <Text style={s.secondaryText}>Retour</Text>
+            {isDone ? "TERMINÉ" : "COMMENCER"}
+          </Text>
         </Pressable>
-      </ScrollView>
+      </View>
+
+      {/* Liste des exos */}
+      <Text style={s.sectionTitle}>Exercices</Text>
+
+      <FlatList
+        data={workout.items ?? []}
+        keyExtractor={(_, i) => String(i)}
+        contentContainerStyle={{ gap: 12, paddingBottom: 64 }}
+        renderItem={renderExercise}
+        ListEmptyComponent={
+          <View style={s.emptyExercises}>
+            <Text style={s.emptyExercisesText}>
+              Aucun exercice dans cet entraînement
+            </Text>
+          </View>
+        }
+      />
     </SafeAreaView>
   );
 }
 
-const s = StyleSheet.create({
-  container: { flex: 1, backgroundColor: "#0F1420", padding: 16 },
-  center: {
+/* -------------------------------------------------
+   HeaderBar : barre haut avec bouton retour
+   ------------------------------------------------- */
+function HeaderBar({
+  title,
+  onBack,
+}: {
+  title: string;
+  onBack: () => void;
+}) {
+  return (
+    <View style={styles.header}>
+      <Pressable style={styles.backBtn} onPress={onBack}>
+        <Ionicons name="chevron-back" size={20} color="#E6F0FF" />
+      </Pressable>
+
+      <Text style={styles.headerTitle} numberOfLines={1}>
+        {title}
+      </Text>
+
+      {/* placeholder pour aligner visuellement le titre au centre */}
+      <View style={{ width: 32 }} />
+    </View>
+  );
+}
+
+/* -------------------------------------------------
+   Styles
+   ------------------------------------------------- */
+const styles = StyleSheet.create({
+  container: {
     flex: 1,
-    justifyContent: "center",
-    alignItems: "center",
     backgroundColor: "#0F1420",
+    paddingHorizontal: 16,
   },
 
-  card: {
+  /* HEADER */
+  header: {
+    flexDirection: "row",
+    alignItems: "center",
+    marginTop: 24,
+    marginBottom: 16,
+    justifyContent: "space-between",
+  },
+  backBtn: {
+    width: 32,
+    height: 32,
+    borderRadius: 8,
+    backgroundColor: "rgba(255,255,255,0.05)",
+    alignItems: "center",
+    justifyContent: "center",
+  },
+  headerTitle: {
+    flex: 1,
+    color: "#E6F0FF",
+    fontSize: 18,
+    lineHeight: 22,
+    fontWeight: "700",
+    textAlign: "center",
+    paddingHorizontal: 8,
+  },
+
+  /* SUMMARY CARD */
+  summaryCard: {
+    backgroundColor: "#121927",
     borderWidth: 1,
     borderColor: "#232A3A",
-    backgroundColor: "#121927",
     borderRadius: 16,
     padding: 16,
-    marginBottom: 16,
-  },
-  note: { color: "#98A2B3", marginBottom: 8 },
-  status: { color: "#E6F0FF", fontWeight: "600" },
-
-  sectionTitle: {
-    color: "#E6F0FF",
-    fontWeight: "700",
-    marginBottom: 12,
-    fontSize: 16,
-  },
-
-  exerciseItem: { marginBottom: 16 },
-  exerciseHeader: {
     flexDirection: "row",
-    justifyContent: "space-between",
     alignItems: "center",
-    marginBottom: 8,
+    gap: 12,
+    marginBottom: 24,
+
+    shadowColor: "#000",
+    shadowOpacity: 0.25,
+    shadowRadius: 8,
+    shadowOffset: { width: 0, height: 4 },
+    elevation: 6,
   },
-  exerciseTitle: {
-    color: "#E6F0FF",
-    fontWeight: "600",
-    fontSize: 15,
-    flex: 1,
-  },
-  progressText: {
-    color: "#12E29A",
-    fontWeight: "700",
+  statusText: {
+    color: "#98A2B3",
     fontSize: 14,
-  },
-  setRow: { paddingVertical: 6 },
-
-  nextSetBtn: {
-    backgroundColor: "#12E29A",
-    alignSelf: "flex-start",
-    paddingHorizontal: 12,
-    paddingVertical: 8,
-    borderRadius: 8,
-    marginTop: 8,
-  },
-
-  cta: {
-    backgroundColor: "#12E29A",
-    paddingVertical: 12,
-    borderRadius: 12,
-    alignItems: "center",
-    marginBottom: 8,
-  },
-  ctaText: { color: "#061018", fontWeight: "700" },
-
-  secondary: {
-    paddingVertical: 12,
-    borderRadius: 12,
-    alignItems: "center",
-  },
-  secondaryText: { color: "#98A2B3", fontWeight: "600" },
-
-  label: {
-    color: "#12E29A",
     fontWeight: "600",
-    marginTop: 12,
     marginBottom: 4,
   },
-  input: {
-    borderWidth: 1,
-    borderColor: "#232A3A",
-    backgroundColor: "#0F1420",
-    color: "#E6F0FF",
-    borderRadius: 12,
-    paddingHorizontal: 12,
-    paddingVertical: 10,
+  metaText: {
+    color: "#98A2B3",
+    fontSize: 13,
+    fontWeight: "500",
   },
 
-  disabledText: {
+  bigActionBtn: {
+    backgroundColor: "#12E29A",
+    borderRadius: 12,
+    paddingVertical: 12,
+    paddingHorizontal: 16,
+    alignItems: "center",
+    justifyContent: "center",
+    minWidth: 110,
+  },
+  bigActionBtnDone: {
+    backgroundColor: "transparent",
+    borderWidth: 1,
+    borderColor: "#12E29A",
+  },
+  bigActionBtnText: {
+    color: "#061018",
+    fontWeight: "700",
+    fontSize: 15,
+    lineHeight: 18,
+  },
+  bigActionBtnTextDone: {
+    color: "#12E29A",
+  },
+
+  /* SECTION TITLE */
+  sectionTitle: {
+    color: "#E6F0FF",
+    fontSize: 16,
+    lineHeight: 22,
+    fontWeight: "700",
+    marginBottom: 12,
+  },
+
+  /* LISTE D'EXERCICES */
+  exerciseCard: {
+    backgroundColor: "#121927",
+    borderWidth: 1,
+    borderColor: "#232A3A",
+    borderRadius: 16,
+    padding: 16,
+    gap: 12,
+
+    shadowColor: "#000",
+    shadowOpacity: 0.25,
+    shadowRadius: 8,
+    shadowOffset: { width: 0, height: 4 },
+    elevation: 6,
+  },
+
+  exerciseName: {
+    color: "#E6F0FF",
+    fontSize: 16,
+    fontWeight: "700",
+  },
+
+  setsContainer: {
+    gap: 8,
+  },
+
+  setRow: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 8,
+    justifyContent: "space-between",
+    backgroundColor: "#1C1F2A",
+    borderRadius: 12,
+    paddingVertical: 10,
+    paddingHorizontal: 12,
+  },
+
+  setIndex: {
+    color: "#E6F0FF",
+    fontWeight: "700",
+    fontSize: 14,
+    minWidth: 28,
+  },
+
+  setDetail: {
+    color: "#E6F0FF",
+    fontSize: 14,
+    fontWeight: "600",
+    flex: 1,
+  },
+
+  setRest: {
     color: "#98A2B3",
-    marginTop: 8,
-    fontSize: 13,
+    fontSize: 12,
+    fontWeight: "500",
+    minWidth: 70,
+    textAlign: "right",
+  },
+
+  noSets: {
+    color: "#98A2B3",
+    fontSize: 14,
+    fontStyle: "italic",
+  },
+
+  /* ÉTATS ERREUR / CHARGEMENT */
+  center: {
+    flex: 1,
+    alignItems: "center",
+    justifyContent: "center",
+  },
+
+  errorCard: {
+    backgroundColor: "#121927",
+    borderRadius: 16,
+    borderWidth: 1,
+    borderColor: "#232A3A",
+    padding: 24,
+    marginTop: 48,
+    alignItems: "center",
+  },
+
+  errorText: {
+    color: "#FF6B6B",
+    fontWeight: "600",
+    marginBottom: 16,
+  },
+
+  reloadBtn: {
+    backgroundColor: "#12E29A",
+    borderRadius: 12,
+    paddingVertical: 10,
+    paddingHorizontal: 16,
+  },
+
+  reloadBtnText: {
+    color: "#061018",
+    fontWeight: "700",
+  },
+
+  /* LIST EMPTY */
+  emptyExercises: {
+    backgroundColor: "#121927",
+    borderWidth: 1,
+    borderColor: "#232A3A",
+    borderRadius: 16,
+    padding: 24,
+    alignItems: "center",
+  },
+  emptyExercisesText: {
+    color: "#98A2B3",
+    fontSize: 14,
   },
 });
