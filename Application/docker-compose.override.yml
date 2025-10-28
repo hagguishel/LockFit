@@ -1,0 +1,9 @@
+services:
+  backend:
+    env_file:
+      - ./Backend/.env
+    environment:
+      PORT: "3002"
+    ports:
+      - "3002:3002"
+    profiles: []
