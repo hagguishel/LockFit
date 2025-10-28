@@ -1,5 +1,8 @@
+// src/api/http.ts
+// centralise la construction d'URL, les en-têtes, la sérialisation JSON et la gestion des erreurs
+
 // =======================================================
-// 🌐 Configuration de base de l’API
+// 🌐 Configuration de base de l'API
 // =======================================================
 // EXPO_PUBLIC_API_URL peut être:
 //   - https://lockfit.onrender.com
@@ -18,31 +21,14 @@ if (!CLEAN_BASE) {
 const API_BASE =
   /\/api\/v1$/i.test(CLEAN_BASE) ? CLEAN_BASE : `${CLEAN_BASE}/api/v1`;
 
-// 1. On récupère la variable EXPO_PUBLIC_API_URL si elle existe.
-//    Sinon on met par défaut l'API Render publique (en HTTPS, accessible depuis n'importe où).
-const FALLBACK_BASE = "https://lockfit.onrender.com";
-
-const RAW_BASE = process.env.EXPO_PUBLIC_API_URL ?? FALLBACK_BASE;
-
-// On nettoie (enlève les espaces, enlève le / à la fin)
-export const CLEAN_BASE = RAW_BASE.trim().replace(/\/+$/, "");
-
-// IMPORTANT : sur Render, toutes les routes commencent déjà par /api/v1
-// Exemple valide : https://lockfit.onrender.com/api/v1/health
-// Donc on ne rajoute PAS /api/v1 deux fois ici.
-export const API_BASE = `${CLEAN_BASE}/api/v1`; // <-- on ne colle plus /api/v1 directement ici
-
-// Petit helper pour assembler l’URL finale correctement
+// Petit helper pour assembler l'URL finale sans // doublons (conserve https://)
 function buildUrl(path: string): string {
-  // si on appelle http("/api/v1/auth/login") on veut pas du double slash
   const p = path.startsWith("/") ? path : `/${path}`;
-  const raw = `${API_BASE}${p}`;
-  return raw.replace(/([^:]\/)\/+/g, "$1");
+  return `${API_BASE}${p}`.replace(/(?<!:)\/{2,}/g, "/");
 }
 
-
 // =======================================================
-// ⚙️ Type d’options acceptées par la fonction http()
+// ⚙️ Type d'options acceptées par la fonction http()
 // =======================================================
 export type HttpOptions = {
   method?: "GET" | "POST" | "PATCH" | "DELETE";
@@ -55,7 +41,7 @@ export type HttpOptions = {
 };
 
 // =======================================================
-// ❗️Classe d’erreur personnalisée (conserve le code HTTP)
+// ❗️Classe d'erreur personnalisée (conserve le code HTTP)
 // =======================================================
 export class HttpError extends Error {
   status: number;
@@ -80,7 +66,7 @@ let waiters: Array<() => void> = [];
 async function tryRefreshOnce(): Promise<boolean> {
   if (refreshing) {
     await new Promise<void>((resolve) => waiters.push(resolve));
-    return true; // on considère le refresh “géré” (réussi ou pas, l’appelant verra)
+    return true; // on considère le refresh "géré" (réussi ou pas, l'appelant verra)
   }
 
   refreshing = true;
@@ -138,7 +124,7 @@ export async function http<T = unknown>(
     ...(extraHeaders ?? {}),
   };
 
-  // Ajout auto de l'access token si aucun token explicite n’est fourni
+  // Ajout auto de l'access token si aucun token explicite n'est fourni
   if (!token) {
     const stored = await loadTokens();
     if (stored?.access && !headers["Authorization"]) {
@@ -155,7 +141,7 @@ export async function http<T = unknown>(
 
   // 🚫 Pas de body pour GET — et ne stringify que si nécessaire
   if (body !== undefined && body !== null && method !== "GET") {
-    // si déjà string/FormData/Blob -> on n’y touche pas
+    // si déjà string/FormData/Blob -> on n'y touche pas
     const isString = typeof body === "string";
     const isFormData = typeof FormData !== "undefined" && body instanceof FormData;
     const isBlob = typeof Blob !== "undefined" && body instanceof Blob;
@@ -195,10 +181,10 @@ export async function http<T = unknown>(
     if (isJson) {
       data = await res.json().catch(() => null);
     } else {
-      // on tente de lire le texte (utile pour 4xx HTML, etc.) sans casser l’API
+      // on tente de lire le texte (utile pour 4xx HTML, etc.) sans casser l'API
       data = await res.text().catch(() => null);
       try {
-        // parfois c’est du JSON sans header correct
+        // parfois c'est du JSON sans header correct
         data = data ? JSON.parse(data) : null;
       } catch {
         // laisse data en string
