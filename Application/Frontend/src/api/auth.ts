@@ -1,14 +1,5 @@
-// ===============================
-// 🔌 API AUTHENTIFICATION (Étape 2 - CONTRAT)
-// ===============================
-/*
- * Objectif: appeler POST /api/v1/auth/login
- * et renvoyer soit { user, tokens }, soit { mfaRequired: true, tempSessionId }.
- * En cas d'erreur serveur: on lève un HttpError normalisé.
- */
-
-// ❌ import Node inutilisable en React Native
-// import { access } from "fs";
+// src/api/auth.ts
+// API authentification : login + signup
 
 import Constants from "expo-constants";
 import type { LoginSuccess, HttpError, LoginMfaRequired } from "../types/auth";
@@ -25,26 +16,98 @@ function pickApiBase(): string {
 
   const raw = (fromEnv || fromExtra).replace(/\/+$/, ""); // retire / en fin
   if (!raw) {
-    console.warn("[auth.login] EXPO_PUBLIC_API_URL manquant → fallback https://lockfit.onrender.com");
+    console.warn("[auth] EXPO_PUBLIC_API_URL manquant → fallback https://lockfit.onrender.com");
     return "https://lockfit.onrender.com";
   }
   return raw;
 }
 
-// 1) Base URL de l'API (accepte avec/sans /api/v1)
+// Base URL de l'API (accepte avec/sans /api/v1)
 const RAW = pickApiBase();
 const API_BASE = /\/api\/v1$/i.test(RAW) ? RAW : `${RAW}/api/v1`;
 
-// Debug temporaire (tu peux commenter après vérification)
-console.log("[login] API_BASE =", API_BASE);
+console.log("[auth] API_BASE =", API_BASE);
+
+/**
+ * Inscription utilisateur
+ */
+export async function signup(data: {
+  email: string;
+  password: string;
+  firstName: string;
+  lastName: string;
+}): Promise<LoginSuccess> {
+  const payload = {
+    email: data.email.trim().toLowerCase(),
+    password: data.password,
+    firstName: data.firstName.trim(),
+    lastName: data.lastName.trim(),
+  };
+
+  const url = `${API_BASE}/auth/signup`;
+  console.log("📝 [SIGNUP] Appel vers:", url);
+
+  let res: Response;
+  try {
+    res = await fetch(url, {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        Accept: "application/json",
+      },
+      body: JSON.stringify(payload),
+    });
+  } catch (e) {
+    const err: HttpError = {
+      status: 0,
+      error: "NETWORK_ERROR",
+      message: (e as Error)?.message,
+    };
+    throw err;
+  }
+
+  const isJson = res.headers.get("content-type")?.includes("application/json");
+  const body = isJson ? await res.json().catch(() => ({})) : null;
+
+  if (!res.ok) {
+    const httpErr: HttpError = {
+      status: res.status,
+      error:
+        typeof body?.error === "string"
+          ? body.error
+          : res.status === 409
+          ? "EMAIL_EXISTS"
+          : res.status === 400
+          ? "INVALID_DATA"
+          : "SERVER_ERROR",
+      message: typeof body?.message === "string" ? body.message : undefined,
+    };
+    throw httpErr;
+  }
+
+  // Succès : tolère plusieurs formats de tokens
+  const tokens =
+    body?.tokens ??
+    (body?.accessToken && body?.refreshToken
+      ? { access: body.accessToken, refresh: body.refreshToken }
+      : null);
+
+  const user = body?.user;
+
+  if (!user || !tokens?.access || !tokens?.refresh) {
+    const malformed: HttpError = {
+      status: 500,
+      error: "BAD_PAYLOAD",
+      message: "Attendu { user, tokens } avec access et refresh.",
+    };
+    throw malformed;
+  }
+
+  return { user, tokens };
+}
 
 /**
  * Connexion utilisateur
- *
- * @returns Promesse qui résout:
- *  - en LoginSuccess (succès)
- *  - ou en LoginMfaRequired (MFA étape suivante)
- *  - ou REJETTE en HttpError (échec 401/429/500, etc.)
  */
 export async function login(
   email: string,
@@ -105,7 +168,7 @@ export async function login(
     return mfa;
   }
 
-  // Cas succès direct: tolère plusieurs formats de tokens
+  // Cas succès direct
   const tokens =
     body?.tokens ??
     (body?.accessToken && body?.refreshToken

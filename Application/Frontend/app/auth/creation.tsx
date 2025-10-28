@@ -1,76 +1,112 @@
+// app/auth/creation.tsx
 import { useState } from "react";
 import { View, Text, TextInput, StyleSheet, Pressable, ActivityIndicator, Alert } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
-import { useRouter } from "expo-router"; // <-- on n'importe que le hook
+import { useRouter } from "expo-router";
+import { saveTokens } from "@/lib/tokenStorage";
 
-// Configure l'URL API
-const API = process.env.EXPO_PUBLIC_API_URL ?? "http://localhost:3001/api/v1";
+// Même logique que dans auth.ts pour construire l'URL
+const RAW = (process.env.EXPO_PUBLIC_API_URL || "https://lockfit.onrender.com").trim().replace(/\/+$/, "");
+const API_BASE = /\/api\/v1$/i.test(RAW) ? RAW : `${RAW}/api/v1`;
 
 export default function SignUpScreen() {
-    const router = useRouter(); //pour revenir en arrière ou changer d'écran
+    const router = useRouter();
 
-    // ici, on stock ce que tape l'utilisateur dans les différents champs
     const [firstName, setFirstName] = useState("");
     const [lastName, setLastName] = useState("");
     const [email, setEmail] = useState("");
     const [password, setPassword] = useState("");
     const [loading, setLoading] = useState(false);
 
-    //validation: on autorise le bouton seulement si tous les champs on était validé
     const canSubmit = firstName && lastName && email.includes("@") && password.length >= 8;
 
-    //Appel utilisé lorsqu'on appuie sur créer un compte
     async function onSubmit() {
         if (!canSubmit || loading) return;
-        setLoading(true); //active le spinner
+        setLoading(true);
+
+        console.log("📝 [SIGNUP] Tentative d'inscription...", { email, firstName, lastName });
+        console.log("📝 [SIGNUP] URL:", `${API_BASE}/auth/signup`);
 
         try {
-            const res = await fetch(`${API}/auth/signup`, {
-                method: "POST", //on envoie les données avec une méthode post
-                headers: { "Content-Type": "application/json" }, //on envoie du json
-                body: JSON.stringify({ email, password, firstName, lastName }), //payload attendue par l'API
+            const res = await fetch(`${API_BASE}/auth/signup`, {
+                method: "POST",
+                headers: {
+                    "Content-Type": "application/json",
+                    "Accept": "application/json",
+                },
+                body: JSON.stringify({
+                    email: email.trim().toLowerCase(),
+                    password,
+                    firstName: firstName.trim(),
+                    lastName: lastName.trim(),
+                }),
             });
 
-            const data = await res.json(); //reponse JSON du serveur
+            const data = await res.json();
+            console.log("✅ [SIGNUP] Réponse:", data);
 
             if (!res.ok) {
-                //si le serveur repond une erreur (ex: 409 email deja utilisée)
                 const msg = data?.message || "Inscription impossible";
-                Alert.alert("Erreur", msg); // pop-up d'erreur simple
+                Alert.alert("Erreur", msg);
                 return;
             }
 
-            //succès : le backend renvoie accesToken, refreshTOken, user
-            Alert.alert("Bienvenue 👋", `Compte créé pour ${data.user.firstName}`, [
-                //on remplace l'écran par /workouts
-                { text: "OK", onPress: () => router.replace("/workouts") },
-            ]);
+            // Récupère les tokens (tolère différents formats)
+            const tokens = data?.tokens ?? 
+                (data?.accessToken && data?.refreshToken 
+                    ? { access: data.accessToken, refresh: data.refreshToken }
+                    : null);
+
+            if (!tokens?.access || !tokens?.refresh) {
+                Alert.alert("Erreur", "Réponse invalide du serveur");
+                return;
+            }
+
+            // Sauvegarde les tokens
+            console.log("💾 [SIGNUP] Sauvegarde des tokens...");
+            await saveTokens(tokens);
+            console.log("✅ [SIGNUP] Tokens sauvegardés");
+
+            // Petit délai pour laisser le temps au storage
+            await new Promise(r => setTimeout(r, 150));
+
+            // Message de bienvenue puis redirection
+            Alert.alert(
+                "Bienvenue 👋",
+                `Compte créé pour ${data.user?.firstName || firstName} !`,
+                [
+                    {
+                        text: "OK",
+                        onPress: () => {
+                            console.log("🔵 [SIGNUP] Navigation vers (tabs)...");
+                            router.replace("/(tabs)");
+                        }
+                    }
+                ]
+            );
         } catch (e: any) {
-            //problème réseau ou serveurr innaccesible
-            Alert.alert("Erreur réseau", e?.message ?? "Vérifiez votre connexion");
+            console.error("❌ [SIGNUP] ERREUR:", e);
+            Alert.alert("Erreur réseau", e?.message || "Vérifiez votre connexion");
         } finally {
-            setLoading(false); //on coupe le spinner dans tous les cas
+            setLoading(false);
         }
     }
 
     return (
-        //écran avec marges respectant l'encoches + fond sombre
         <SafeAreaView style={styles.container} edges={["top", "bottom"]}>
             <Text style={styles.title}>Créer ton compte dès maintenant ✌</Text>
 
             <View style={styles.form}>
-                {/* Champ prénom */}
                 <Text style={styles.label}>Prénom</Text>
                 <TextInput
                     value={firstName}
-                    onChangeText={setFirstName}   //on met a jour a chaque frappe
+                    onChangeText={setFirstName}
                     placeholder="Tom"
                     placeholderTextColor="#64748B"
                     style={styles.input}
-                    autoCapitalize="words"  //Met la première lettre du prénom en majuscule
+                    autoCapitalize="words"
                 />
 
-                {/* Champ nom */}
                 <Text style={styles.label}>Nom</Text>
                 <TextInput
                     value={lastName}
@@ -81,7 +117,6 @@ export default function SignUpScreen() {
                     autoCapitalize="words"
                 />
 
-                {/* Champ email */}
                 <Text style={styles.label}>Email</Text>
                 <TextInput
                     value={email}
@@ -93,29 +128,26 @@ export default function SignUpScreen() {
                     keyboardType="email-address"
                 />
 
-                {/* Champ Mot de passe */}
                 <Text style={styles.label}>Mot de passe</Text>
                 <TextInput
                     value={password}
                     onChangeText={setPassword}
                     placeholder="8 caractères minimum"
-                    placeholderTextColor={"#64748B"}
+                    placeholderTextColor="#64748B"
                     style={styles.input}
-                    secureTextEntry  //masque les caractères
+                    secureTextEntry
                 />
 
-                {/* Bouton d'envoi */}
                 <Pressable
-                    onPress={onSubmit} //on appelle la fonction onSubmit pour l'appel a l'API lors du clic
-                    disabled={!canSubmit || loading}  //On désactive le bouton si le formulaire est invalide
-                    style={[styles.cta, (!canSubmit || loading) && { opacity: 0.6 }]} //petit effet visuel disabled
+                    onPress={onSubmit}
+                    disabled={!canSubmit || loading}
+                    style={[styles.cta, (!canSubmit || loading) && { opacity: 0.6 }]}
                 >
                     {loading
-                        ? <ActivityIndicator />  //spinner pendant l'appel
+                        ? <ActivityIndicator color="#061018" />
                         : <Text style={styles.ctaText}>Créer mon compte</Text>}
                 </Pressable>
 
-                {/* Lien retour simple */}
                 <Pressable onPress={() => router.back()} style={{ alignSelf: "center", marginTop: 16 }}>
                     <Text style={{ color: "#98A2B3" }}>Retour</Text>
                 </Pressable>
@@ -124,7 +156,6 @@ export default function SignUpScreen() {
     );
 }
 
-// styles visuels (couleurs/espacements)
 const styles = StyleSheet.create({
     container: { flex: 1, padding: 16, backgroundColor: "#0F1420" },
     title: { fontSize: 24, fontWeight: "700", color: "#12E29A", textAlign: "center", marginVertical: 12 },
