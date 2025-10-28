@@ -1,15 +1,11 @@
 // app/workouts/new.tsx
 // Écran de création d’un entraînement (POST /workouts)
 
-import { useState } from "react";
-import { Alert, StyleSheet, Text, View, TextInput, Pressable, ActivityIndicator, Platform, KeyboardAvoidingView } from "react-native";
-import { SafeAreaView } from "react-native-safe-area-context";
-import { Stack, useRouter } from "expo-router";
-import { createWorkout } from "@/lib/workouts";            // ✅ alias @
-import { HttpError } from "@/api/http";                    // ✅ messages/status propres
-import theme from "@/theme/colors";                        // (optionnel) cohérence visuelle
-import layout from "@/theme/layout";
-import typography from "@/theme/typography";
+import { useState } from "react"; // Hooks React pour gérer l'état (title, saving)
+import { Alert, StyleSheet, Text, View, TextInput, Pressable } from "react-native"; // Composant de l'UI
+import { SafeAreaView } from "react-native-safe-area-context"; // Gère seul les zones "safe"
+import { Stack, useRouter } from "expo-router"; // Header + navigation
+import { createWorkout } from "@/lib/workouts";    // Client API: POST /workouts
 
 export default function NewWorkoutScreen() {
   const router = useRouter();

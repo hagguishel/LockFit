@@ -1,11 +1,8 @@
-// app/workouts/index.tsx
-// 🏋️ Onglet "Mes entraînements"
-// Étape 1 : UI fidèle au Figma + palette & layout LockFit
-// Étape 2 : filtre semaine via /workouts?from=YYYY-MM-DD&to=YYYY-MM-DD
+// Écran principal "Mes entraînements"
+// Fichier : app/(tabs)/workouts/index.tsx
 
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { SafeAreaView } from "react-native-safe-area-context";
-import { Link, Stack, useFocusEffect, useRouter } from "expo-router";
 import {
   ActivityIndicator,
   FlatList,
@@ -16,28 +13,51 @@ import {
   View,
 } from "react-native";
 import { Ionicons } from "@expo/vector-icons";
-import theme from "@/theme/colors";
-import layout from "@/theme/layout";
-import typography from "@/theme/typography";
-import { listWorkouts, type Workout } from "@/lib/workouts"; // ✅ alias @
-import { useBottomTabBarHeight } from "@react-navigation/bottom-tabs";
-import { HttpError } from "@/api/http"; // ✅ message/status propres
-import { clearTokens } from "@/lib/tokenStorage"; // ✅ logout
+import { useRouter } from "expo-router";
 
-// === Helpers semaine ===
+// API client vers ton backend NestJS
+// - listWorkouts() -> GET /workouts
+// - deleteWorkout() -> DELETE /workouts/:id
+// - Workout -> type aligné backend
+import {
+  listWorkouts,
+  deleteWorkout,
+  type Workout,
+} from "@/lib/workouts";
+
+/* -------------------------------------------------
+   Helpers calendrier / semaine
+   ------------------------------------------------- */
+
+// Labels des jours dans la barre semaine
 const daysLabels = ["Dim", "Lun", "Mar", "Mer", "Jeu", "Ven", "Sam"];
+
+/**
+ * startOfWeek(d)
+ * Retourne le début de semaine pour la date d.
+ */
 function startOfWeek(d: Date) {
   const x = new Date(d);
-  const day = (x.getDay() + 7) % 7;
+  const day = (x.getDay() + 7) % 7; // 0 = dimanche
   x.setHours(0, 0, 0, 0);
   x.setDate(x.getDate() - day);
   return x;
 }
+
+/**
+ * addDays(d, n)
+ * Retourne une nouvelle date: d + n jours.
+ */
 function addDays(d: Date, n: number) {
   const x = new Date(d);
   x.setDate(x.getDate() + n);
   return x;
 }
+
+/**
+ * isSameDay(a,b)
+ * Compare juste AAAA-MM-JJ (pas l'heure).
+ */
 function isSameDay(a: Date, b: Date) {
   return (
     a.getFullYear() === b.getFullYear() &&
@@ -53,31 +73,92 @@ function fmtDate(d: Date) {
   return `${y}-${m}-${day}`;
 }
 
-export default function WorkoutsScreen() {
-  const tabBarHeight = useBottomTabBarHeight();
+/* -------------------------------------------------
+   Helpers produit (calcul affichage)
+   ------------------------------------------------- */
+
+/**
+ * computeTotalSets(workout)
+ * Compte le nombre total de séries (= sets)
+ * en additionnant pour chaque exercice.
+ */
+function computeTotalSets(workout: any): number {
+  if (!workout?.items) return 0;
+
+  return workout.items.reduce((acc: number, item: any) => {
+    const count = Array.isArray(item?.sets) ? item.sets.length : 0;
+    return acc + count;
+  }, 0);
+}
+
+/**
+ * computeEstimatedDurationMin(workout)
+ * Estimation rapide de la durée :
+ * - chaque série = ~30s de travail
+ * - repos entre séries = set.rest si dispo sinon 60s
+ */
+function computeEstimatedDurationMin(workout: any): number {
+  if (!workout?.items) return 0;
+
+  let totalSec = 0;
+
+  for (const item of workout.items) {
+    if (!item?.sets) continue;
+
+    for (const set of item.sets) {
+      const restSeconds =
+        typeof set?.rest === "number" ? set.rest : 60; // fallback 60s
+      totalSec += restSeconds + 30; // 30s exécution de la série
+    }
+  }
+
+  return Math.ceil(totalSec / 60);
+}
+
+/**
+ * computeProgressRatio(workout)
+ * Retourne un ratio entre 0 et 1.
+ * Ici : 1 = terminé (finishedAt existe), sinon 0.
+ */
+function computeProgressRatio(workout: any): number {
+  return workout?.finishedAt ? 1 : 0;
+}
+
+/* -------------------------------------------------
+   Composant principal : l'onglet Workouts
+   ------------------------------------------------- */
+
+export default function WorkoutsTabScreen() {
   const router = useRouter();
 
+  // Données venant du backend
   const [items, setItems] = useState<Workout[]>([]);
   const [total, setTotal] = useState(0);
-  const [loading, setLoading] = useState(true);
-  const [refreshing, setRefreshing] = useState(false);
-  const [error, setError] = useState<string | null>(null);
 
-  const [weekStart, setWeekStart] = useState<Date>(() => startOfWeek(new Date()));
+  // États UI / réseau
+  const [loading, setLoading] = useState(true); // premier chargement
+  const [refreshing, setRefreshing] = useState(false); // pull-to-refresh
+  const [error, setError] = useState<string | null>(null); // message erreur API
+
+  // Semaine / jour sélectionné pour la barre en haut
+  const [weekStart, setWeekStart] = useState<Date>(() =>
+    startOfWeek(new Date())
+  );
   const [selectedDay, setSelectedDay] = useState<Date>(() => new Date());
 
+  /**
+   * load()
+   * Va chercher les workouts via GET /workouts
+   * et remplit items[] + total
+   */
   const load = useCallback(async () => {
     try {
       setError(null);
       setLoading(true);
 
-      // fenêtre de la semaine [weekStart .. weekStart+6]
-      const from = fmtDate(weekStart);
-      const to = fmtDate(addDays(weekStart, 6));
-
-      const res = await listWorkouts({ from, to });
-      setItems(res.items ?? []);
-      setTotal(res.total ?? (res.items?.length ?? 0));
+      const res = await listWorkouts(); // { items, total }
+      setItems(res.items);
+      setTotal(res.total ?? res.items.length);
     } catch (e: any) {
       if (e instanceof HttpError) setError(`${e.status} — ${e.message}`);
       else setError(e?.message || "Erreur de chargement");
@@ -86,18 +167,15 @@ export default function WorkoutsScreen() {
     }
   }, [weekStart]);
 
-  // recharge sur focus
-  useFocusEffect(
-    useCallback(() => {
-      load();
-    }, [load])
-  );
-
-  // recharge quand la semaine change via les flèches
+  // Chargement initial de l'écran
   useEffect(() => {
     load();
-  }, [load, weekStart]);
+  }, [load]);
 
+  /**
+   * onRefresh()
+   * Utilisé par le pull-to-refresh (glisser vers le bas).
+   */
   const onRefresh = useCallback(async () => {
     setRefreshing(true);
     try {
@@ -107,104 +185,209 @@ export default function WorkoutsScreen() {
     }
   }, [load]);
 
-  // Logout
-  const onLogout = useCallback(async () => {
-    try {
-      await clearTokens();
-    } finally {
-      router.replace("/auth/login");
-    }
-  }, [router]);
+  /**
+   * handleDelete(id)
+   * Supprime un workout :
+   * 1. appelle DELETE /workouts/:id
+   * 2. enlève ce workout du state local
+   */
+  const handleDelete = useCallback(
+    async (id: string) => {
+      try {
+        await deleteWorkout(id);
+        setItems((prev) => prev.filter((w) => w.id !== id));
+        setTotal((prev) => Math.max(prev - 1, 0));
+      } catch (e: any) {
+        console.error("Erreur suppression", e?.message || e);
+      }
+    },
+    [setItems, setTotal]
+  );
 
   const s = styles;
 
+  /**
+   * listContent
+   * Rendu principal selon l'état:
+   * - chargement
+   * - erreur
+   * - vide
+   * - liste réelle
+   */
   const listContent = useMemo(() => {
-    if (loading) {
+    // 1. état "loading"
+    if (loading)
       return (
         <View style={s.center}>
           <ActivityIndicator />
         </View>
       );
-    }
-    if (error) {
+
+    // 2. état "erreur API"
+    if (error)
       return (
         <View style={s.emptyCard}>
           <Text style={s.errorText}>{error}</Text>
+
           <Pressable onPress={load} style={s.cta}>
             <Text style={s.ctaText}>Réessayer</Text>
           </Pressable>
         </View>
       );
-    }
-    if (items.length === 0) {
+
+    // 3. état "aucun entraînement"
+    if (items.length === 0)
       return (
         <View style={s.emptyCard}>
           <Text style={s.sectionTitle}>Workouts du jour</Text>
-
-          <View style={{ height: layout.gap.lg }} />
-
           <Text style={s.emoji}>🏋️‍♂️</Text>
-          <Text style={s.emptyTitle}>Aucun workout prévu aujourd&apos;hui</Text>
-
-          <View style={{ height: layout.gap.lg }} />
-
-          <Link href="/workouts/new" asChild>
-            <Pressable style={s.ctaLarge}>
-              <Ionicons name="add" size={18} color={theme.colors.onPrimary} />
-              <Text style={[s.ctaText, { marginLeft: 6 }]}>CREER UN WORKOUT</Text>
-            </Pressable>
-          </Link>
+          <Text style={s.emptyTitle}>
+            Aucun workout prévu aujourd&apos;hui
+          </Text>
         </View>
       );
-    }
+
+    // 4. état normal -> liste
     return (
       <>
         <Text style={s.sectionTitle}>Workouts du jour</Text>
+
         <FlatList
           data={items}
-          keyExtractor={(w) => String(w.id)}
-          refreshControl={<RefreshControl refreshing={refreshing} onRefresh={onRefresh} />}
+          keyExtractor={(w) => w.id}
+          refreshControl={
+            <RefreshControl refreshing={refreshing} onRefresh={onRefresh} />
+          }
           contentContainerStyle={{
-            gap: layout.gap.md,
-            paddingBottom: 128, // évite que le FAB masque le dernier item
+            gap: 12,
+            paddingBottom: 160, // espace pour ne pas masquer par le FAB
           }}
-          renderItem={({ item }) => (
-            <Link href={`/workouts/${item.id}`} asChild>
-              <Pressable style={s.card}>
-                <Text style={s.cardTitle}>{item.title}</Text>
-                <Text style={s.cardSub}>
-                  {item.finishedAt ? "Terminé" : "Planifié / En cours"}
-                </Text>
-              </Pressable>
-            </Link>
-          )}
-          ListFooterComponent={<Text style={s.totalText}>Total: {total}</Text>}
+          renderItem={({ item }) => {
+            // On calcule les infos affichées pour cette carte
+            const totalSets = computeTotalSets(item);
+            const estimatedDurationMin = computeEstimatedDurationMin(item);
+            const progressRatio = computeProgressRatio(item);
+            const isDone = progressRatio === 1;
+
+            return (
+              <View style={s.workoutCard}>
+                {/* Ligne du haut : titre + bouton poubelle */}
+                <View style={s.cardHeaderRow}>
+                  {/* Titre cliquable -> ouvrira le détail (étape 2) */}
+                  <Pressable
+                    style={{ flex: 1 }}
+                    onPress={() => {
+                      // On pousse vers /workouts/[id]
+                      // L'écran sera fait à l'étape 2
+                      router.push(`/workouts/${item.id}`);
+                    }}
+                  >
+                    <Text style={s.workoutTitle}>
+                      {item.title || "Sans nom"}
+                    </Text>
+                  </Pressable>
+
+                  {/* Bouton suppression -> handleDelete */}
+                  <Pressable
+                    onPress={() => {
+                      handleDelete(item.id);
+                    }}
+                    style={s.deleteBtn}
+                  >
+                    <Ionicons
+                      name="trash-outline"
+                      size={20}
+                      color="#FF6B6B"
+                    />
+                  </Pressable>
+                </View>
+
+                {/* Ligne méta sous le titre */}
+                {isDone ? (
+                  // Séance terminée
+                  <Text
+                    style={[
+                      s.workoutMeta,
+                      { color: "#12E29A" }, // vert "succès"
+                    ]}
+                  >
+                    Terminé ✅
+                  </Text>
+                ) : (
+                  // Séance pas terminée
+                  <Text style={s.workoutMeta}>
+                    ~{estimatedDurationMin} min  •  {totalSets} séries
+                  </Text>
+                )}
+
+                {/* Barre de progression */}
+                <View style={s.progressBarTrack}>
+                  <View
+                    style={[
+                      s.progressBarFill,
+                      { width: `${Math.min(progressRatio * 100, 100)}%` },
+                    ]}
+                  />
+                </View>
+
+                {/* Bouton COMMENCER / TERMINÉ */}
+                <Pressable
+                  onPress={() => {
+                    router.push(`/workouts/${item.id}`);
+                  }}
+                  style={[s.startButton, isDone && s.startButtonDone]}
+                >
+                  <Text
+                    style={[
+                      s.startButtonText,
+                      isDone && s.startButtonTextDone,
+                    ]}
+                  >
+                    {isDone ? "TERMINÉ" : "COMMENCER"}
+                  </Text>
+                </Pressable>
+              </View>
+            );
+          }}
+          ListFooterComponent={
+            <Text style={s.totalText}>Total: {total}</Text>
+          }
         />
       </>
     );
-  }, [loading, error, items, total, refreshing, onRefresh, s, load]);
+  }, [
+    loading,
+    error,
+    items,
+    total,
+    refreshing,
+    onRefresh,
+    s,
+    router,
+    load,
+    handleDelete,
+  ]);
 
+  // Rendu global de l'écran
   return (
     <SafeAreaView style={s.container} edges={["top", "bottom"]}>
-      <Stack.Screen options={{ headerShown: false }} />
-
-      {/* Header */}
+      {/* HEADER haut */}
       <View style={s.header}>
         <Text style={s.title}>Mes entraînements</Text>
-        <View style={{ flexDirection: "row", gap: 8 }}>
-          <Link href="/calendar" asChild>
-            <Pressable style={s.iconBtn}>
-              <Ionicons name="calendar-outline" size={20} color={theme.colors.text} />
-            </Pressable>
-          </Link>
-          {/* Logout */}
-          <Pressable style={s.iconBtn} onPress={onLogout} accessibilityLabel="Se déconnecter">
-            <Ionicons name="power-outline" size={20} color={theme.colors.danger ?? "#ef4444"} />
-          </Pressable>
-        </View>
+
+        {/* Bouton calendrier (placeholder) */}
+        <Pressable
+          style={s.iconBtn}
+          onPress={() => {
+            console.log("calendar!");
+            // plus tard -> router.push('/calendar')
+          }}
+        >
+          <Ionicons name="calendar-outline" size={20} color="#E6F0FF" />
+        </Pressable>
       </View>
 
-      {/* Bandeau semaine */}
+      {/* Barre semaine */}
       <WeekStrip
         weekStart={weekStart}
         selectedDay={selectedDay}
@@ -213,22 +396,29 @@ export default function WorkoutsScreen() {
         onSelectDay={setSelectedDay}
       />
 
-      <View style={{ height: layout.gap.md }} />
+      {/* espace visuel */}
+      <View style={{ height: 16 }} />
 
-      {/* Contenu */}
+      {/* Contenu dynamique (liste / vide / erreur / loader) */}
       {listContent}
 
-      {/* Bouton flottant toujours visible */}
-      <Link href="/workouts/new" asChild>
-        <Pressable style={s.fab} accessibilityRole="button" accessibilityLabel="Créer un workout">
-          <Ionicons name="add" size={28} color={theme.colors.onPrimary} />
-        </Pressable>
-      </Link>
+      {/* FAB flottant "+" (création séance -> étape 3) */}
+      <Pressable
+        onPress={() => {
+          router.push("/workouts/new");
+        }}
+        style={s.fab}
+      >
+        <Ionicons name="add" size={32} color="#061018" />
+      </Pressable>
     </SafeAreaView>
   );
 }
 
-// === Bandeau semaine ===
+/* -------------------------------------------------
+   Composant WeekStrip
+   -> Le bandeau semaine (Dim Lun Mar ...)
+   ------------------------------------------------- */
 function WeekStrip({
   weekStart,
   selectedDay,
@@ -242,27 +432,40 @@ function WeekStrip({
   onNextWeek: () => void;
   onSelectDay: (d: Date) => void;
 }) {
+  // Jours de la semaine courante
   const days = Array.from({ length: 7 }, (_, i) => addDays(weekStart, i));
-  const s = styles;
 
   return (
-    <View style={s.weekStrip}>
-      <Pressable style={s.arrow} onPress={onPrevWeek}>
-        <Ionicons name="chevron-back" size={18} color={theme.colors.muted} />
+    <View style={styles.weekStrip}>
+      {/* flèche gauche */}
+      <Pressable style={styles.arrow} onPress={onPrevWeek}>
+        <Ionicons name="chevron-back" size={18} color="#98A2B3" />
       </Pressable>
 
-      <View style={s.weekDays}>
+      {/* jours */}
+      <View style={styles.weekDays}>
         {days.map((d, i) => {
           const active = isSameDay(d, selectedDay);
           return (
-            <Pressable key={i} style={s.dayItem} onPress={() => onSelectDay(d)}>
+            <Pressable
+              key={i}
+              style={styles.dayItem}
+              onPress={() => onSelectDay(d)}
+            >
+              {/* pastille ronde du jour */}
               <View
                 style={[
-                  s.dayDot,
-                  active && { backgroundColor: theme.colors.primary },
+                  styles.dayDot,
+                  active && { backgroundColor: "#12E29A" },
                 ]}
               />
-              <Text style={[s.dayLabel, active && { color: theme.colors.text }]}>
+              {/* label du jour (Dim, Lun, ...) */}
+              <Text
+                style={[
+                  styles.dayLabel,
+                  active && { color: "#E6F0FF" },
+                ]}
+              >
                 {daysLabels[i]}
               </Text>
             </Pressable>
@@ -270,118 +473,260 @@ function WeekStrip({
         })}
       </View>
 
-      <Pressable style={s.arrow} onPress={onNextWeek}>
-        <Ionicons name="chevron-forward" size={18} color={theme.colors.muted} />
+      {/* flèche droite */}
+      <Pressable style={styles.arrow} onPress={onNextWeek}>
+        <Ionicons name="chevron-forward" size={18} color="#98A2B3" />
       </Pressable>
     </View>
   );
 }
 
-// === Styles ===
+/* -------------------------------------------------
+   Styles (tous les styles inline sans thème externe)
+   ------------------------------------------------- */
+
 const styles = StyleSheet.create({
+  // Conteneur global écran
   container: {
     flex: 1,
-    backgroundColor: theme.colors.bg,
-    paddingHorizontal: layout.inset.x,
-    paddingTop: layout.inset.y,
-    position: "relative", // pour que le FAB en position:absolute se réfère à cet écran
-  },
-  header: {
-    flexDirection: "row",
-    alignItems: "center",
-    justifyContent: "space-between",
-    marginBottom: layout.section.headerGap,
-  },
-  title: { ...typography.h1 },
-  iconBtn: {
-    padding: 8,
-    borderRadius: layout.radius.md,
-    backgroundColor: "rgba(255,255,255,0.04)",
+    backgroundColor: "#0F1420", // fond global
+    paddingHorizontal: 16,
+    position: "relative",
   },
 
+  // Header en haut (titre + bouton calendrier)
+  header: {
+    flexDirection: "row",
+    justifyContent: "space-between",
+    marginTop: 24,
+    marginBottom: 12,
+    alignItems: "center",
+  },
+
+  title: {
+    color: "#E6F0FF",
+    fontSize: 22,
+    lineHeight: 28,
+    fontWeight: "700",
+  },
+
+  iconBtn: {
+    backgroundColor: "rgba(255,255,255,0.05)", // léger overlay
+    borderRadius: 12,
+    paddingHorizontal: 10,
+    paddingVertical: 10,
+  },
+
+  // Bandeau semaine
   weekStrip: {
     flexDirection: "row",
     alignItems: "center",
     justifyContent: "space-between",
-    borderRadius: layout.radius.lg,
-    backgroundColor: theme.colors.surface,
+
+    backgroundColor: "#121927",
+    borderColor: "#232A3A",
     borderWidth: 1,
-    borderColor: theme.colors.border,
-    paddingHorizontal: layout.gap.sm,
-    paddingVertical: layout.gap.sm + 2,
+    borderRadius: 16,
+
+    paddingHorizontal: 12,
+    paddingVertical: 12,
   },
-  arrow: { padding: 6, borderRadius: layout.radius.sm },
+
+  arrow: {
+    padding: 6,
+    borderRadius: 8,
+  },
+
   weekDays: {
     flex: 1,
     flexDirection: "row",
     justifyContent: "space-around",
     alignItems: "center",
-    paddingHorizontal: layout.gap.xs,
+    paddingHorizontal: 8,
   },
-  dayItem: { alignItems: "center", gap: layout.gap.xs },
+
+  dayItem: {
+    alignItems: "center",
+    gap: 6,
+  },
+
   dayDot: {
     width: 24,
     height: 24,
     borderRadius: 12,
-    backgroundColor: theme.colors.dot,
+    backgroundColor: "#1C1F2A", // pastille neutre
   },
-  dayLabel: { ...typography.mute, fontSize: 12, lineHeight: 16, fontWeight: "600" },
 
-  sectionTitle: { ...typography.h2, marginBottom: layout.gap.sm },
+  dayLabel: {
+    color: "#98A2B3",
+    fontSize: 12,
+    lineHeight: 16,
+    fontWeight: "600",
+  },
 
-  card: {
+  // Titre de la section "Workouts du jour"
+  sectionTitle: {
+    color: "#E6F0FF",
+    fontSize: 16,
+    lineHeight: 22,
+    fontWeight: "700",
+    marginTop: 24,
+    marginBottom: 12,
+  },
+
+  // Carte workout
+  workoutCard: {
+    backgroundColor: "#121927",
+    borderRadius: 16,
+    padding: 16,
     borderWidth: 1,
-    borderColor: theme.colors.border,
-    backgroundColor: theme.colors.surface,
-    borderRadius: layout.radius.lg,
-    padding: layout.gap.lg,
-    ...theme.shadow.card,
-  },
-  cardTitle: { ...typography.h2 },
-  cardSub: { ...typography.mute, marginTop: layout.gap.xs },
+    borderColor: "#232A3A",
+    gap: 6,
 
-  emptyCard: {
-    borderWidth: 1,
-    borderColor: theme.colors.border,
-    backgroundColor: theme.colors.surface,
-    borderRadius: layout.radius.lg,
-    padding: layout.gap.xl,
-    alignItems: "center",
+    // ombre douce
+    shadowColor: "#000",
+    shadowOpacity: 0.25,
+    shadowRadius: 8,
+    shadowOffset: { width: 0, height: 4 },
+    elevation: 6,
   },
-  emoji: { fontSize: 36, marginBottom: layout.gap.sm },
-  emptyTitle: { ...typography.mute },
 
-  cta: {
-    backgroundColor: theme.colors.primary,
-    paddingVertical: layout.gap.sm,
-    paddingHorizontal: layout.gap.lg,
-    borderRadius: layout.radius.md,
-  },
-  ctaLarge: {
-    backgroundColor: theme.colors.primary,
-    paddingVertical: layout.gap.sm + 4,
-    paddingHorizontal: layout.gap.lg,
-    borderRadius: layout.radius.md,
+  // Ligne du haut dans la carte: titre + poubelle
+  cardHeaderRow: {
     flexDirection: "row",
     alignItems: "center",
   },
-  ctaText: { ...typography.cta },
 
-  totalText: { color: theme.colors.muted, marginTop: layout.gap.sm },
-
-  fab: {
-    position: "absolute",
-    right: layout.inset.x,
-    width: 56,
-    height: 56,
-    borderRadius: 28,
-    alignItems: "center",
-    justifyContent: "center",
-    backgroundColor: theme.colors.primary,
-    zIndex: 10, // passe au-dessus
-    ...theme.shadow.card,
+  // Bouton supprimer (poubelle rouge)
+  deleteBtn: {
+    marginLeft: 6,
+    padding: 6,
+    borderRadius: 12,
+    backgroundColor: "rgba(255,0,0,0.07)",
   },
 
-  center: { flex: 1, alignItems: "center", justifyContent: "center" },
-  errorText: { color: theme.colors.danger, marginBottom: 10 },
+  // Titre du workout
+  workoutTitle: {
+    color: "#E6F0FF",
+    fontSize: 16,
+    fontWeight: "700",
+  },
+
+  // Texte sous le titre
+  workoutMeta: {
+    color: "#98A2B3",
+    fontSize: 14,
+    fontWeight: "500",
+  },
+
+  // Barre de progression (track)
+  progressBarTrack: {
+    height: 4,
+    borderRadius: 999,
+    backgroundColor: "#1C1F2A",
+    overflow: "hidden",
+  },
+
+  // Barre de progression (remplissage vert)
+  progressBarFill: {
+    height: 4,
+    borderRadius: 999,
+    backgroundColor: "#12E29A",
+  },
+
+  // Bouton "COMMENCER" / "TERMINÉ"
+  startButton: {
+    backgroundColor: "#12E29A",
+    borderRadius: 12,
+    paddingVertical: 12,
+    alignItems: "center",
+    justifyContent: "center",
+  },
+
+  startButtonText: {
+    color: "#061018",
+    fontWeight: "700",
+    fontSize: 15,
+    lineHeight: 18,
+  },
+
+  // Variante visuelle si la séance est déjà finie
+  startButtonDone: {
+    backgroundColor: "transparent",
+    borderWidth: 1,
+    borderColor: "#12E29A",
+  },
+
+  startButtonTextDone: {
+    color: "#12E29A",
+  },
+
+  // États "vide", "erreur", etc.
+  emoji: {
+    fontSize: 36,
+    marginBottom: 6,
+  },
+
+  emptyCard: {
+    borderColor: "#232A3A",
+    borderWidth: 1,
+    backgroundColor: "#121927",
+    borderRadius: 16,
+    padding: 24,
+    alignItems: "center",
+    marginTop: 24,
+  },
+
+  emptyTitle: {
+    color: "#98A2B3",
+  },
+
+  totalText: {
+    color: "#98A2B3",
+    marginTop: 6,
+  },
+
+  cta: {
+    backgroundColor: "#12E29A",
+    paddingVertical: 8,
+    paddingHorizontal: 12,
+    borderRadius: 12,
+    marginTop: 12,
+  },
+
+  ctaText: {
+    color: "#061018",
+    fontWeight: "700",
+  },
+
+  center: {
+    flex: 1,
+    alignItems: "center",
+    justifyContent: "center",
+  },
+
+  errorText: {
+    color: "#FF6B6B",
+  },
+
+  // FAB flottant "+"
+  fab: {
+    position: "absolute",
+    right: 24,
+    bottom: 100, // reste au-dessus de la tab bar
+    width: 64,
+    height: 64,
+    borderRadius: 32,
+    backgroundColor: "#12E29A",
+    alignItems: "center",
+    justifyContent: "center",
+    zIndex: 9999,
+
+    // ombre du bouton flottant
+    shadowColor: "#000",
+    shadowOpacity: 0.5,
+    shadowRadius: 10,
+    shadowOffset: { width: 0, height: 3 },
+    elevation: 50,
+  },
 });

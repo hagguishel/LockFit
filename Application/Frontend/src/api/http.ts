@@ -1,8 +1,5 @@
-// src/api/http.ts
-// centralise la construction d’URL, les en-têtes, la sérialisation JSON et la gestion des erreurs
-
 // =======================================================
-// 🌐 Configuration de base de l'API
+// 🌐 Configuration de base de l’API
 // =======================================================
 // EXPO_PUBLIC_API_URL peut être:
 //   - https://lockfit.onrender.com
@@ -21,11 +18,28 @@ if (!CLEAN_BASE) {
 const API_BASE =
   /\/api\/v1$/i.test(CLEAN_BASE) ? CLEAN_BASE : `${CLEAN_BASE}/api/v1`;
 
-// Petit helper pour assembler l’URL finale sans // doublons (conserve https://)
+// 1. On récupère la variable EXPO_PUBLIC_API_URL si elle existe.
+//    Sinon on met par défaut l'API Render publique (en HTTPS, accessible depuis n'importe où).
+const FALLBACK_BASE = "https://lockfit.onrender.com";
+
+const RAW_BASE = process.env.EXPO_PUBLIC_API_URL ?? FALLBACK_BASE;
+
+// On nettoie (enlève les espaces, enlève le / à la fin)
+export const CLEAN_BASE = RAW_BASE.trim().replace(/\/+$/, "");
+
+// IMPORTANT : sur Render, toutes les routes commencent déjà par /api/v1
+// Exemple valide : https://lockfit.onrender.com/api/v1/health
+// Donc on ne rajoute PAS /api/v1 deux fois ici.
+export const API_BASE = `${CLEAN_BASE}/api/v1`; // <-- on ne colle plus /api/v1 directement ici
+
+// Petit helper pour assembler l’URL finale correctement
 function buildUrl(path: string): string {
+  // si on appelle http("/api/v1/auth/login") on veut pas du double slash
   const p = path.startsWith("/") ? path : `/${path}`;
-  return `${API_BASE}${p}`.replace(/(?<!:)\/{2,}/g, "/");
+  const raw = `${API_BASE}${p}`;
+  return raw.replace(/([^:]\/)\/+/g, "$1");
 }
+
 
 // =======================================================
 // ⚙️ Type d’options acceptées par la fonction http()
@@ -239,7 +253,7 @@ export async function http<T = unknown>(
   if (!res.ok) {
     const msg =
       (data && (typeof data === "object") && ("message" in data || "error" in data)
-        ? 
+        ?
           (data.message || data.error)
         : `HTTP ${res.status}`);
     const text = Array.isArray(msg) ? msg.join("\n") : String(msg);

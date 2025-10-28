@@ -22,6 +22,9 @@ build/
 .env.render
 .env.*.local
 .lockfit.env
+.env.local
+.env.render
+.env.prod
 # exemples autorisés
 !.env.example
 
@@ -61,3 +64,4 @@ docker-data/
 # --- OS Linux ---
 *~
 1
+docker-compose.override.yml

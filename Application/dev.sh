@@ -1,312 +1,176 @@
 #!/usr/bin/env bash
-set -euo pipefail
+set -e
 
-# ═══════════════════════════════════════════════════════════════
-#  🚀 LockFit Development Launcher (remote‑only Supabase)
-#     - Utilise exclusivement la base distante (Supabase/Neon)
-#     - Pré‑check de connectivité distante + erreurs claires
-#     - Prisma: migrate deploy → fallback db push
-# ═══════════════════════════════════════════════════════════════
+# Script LockFit: backend (Docker) + tunnel Cloudflare + Expo
+echo "🚀 Démarrage de LockFit avec tunnel..."
 
-readonly ROOT_DIR="$(cd "$(dirname "$0")" && pwd)"
-readonly BACK_DIR="$ROOT_DIR/Backend"
-readonly FRONT_DIR="$ROOT_DIR/Frontend"
-readonly BACK_ENV_LOCAL="$BACK_DIR/.env"
-readonly BACK_ENV_DOCKER="$BACK_DIR/.env.docker"
-readonly FRONT_ENV="$FRONT_DIR/.env"
-readonly LOG_FILE="/tmp/cloudflared.lockfit.log"
+# Récupération des chemins
+ROOT_DIR="$(cd "$(dirname "$0")" && pwd)"
+BACK_DIR="$ROOT_DIR/Backend"
+FRONT_DIR="$ROOT_DIR/Frontend"
 
-# ─────────────────────────────────────────────────────────────
-#  Flags
-# ─────────────────────────────────────────────────────────────
-NO_EXPO=0
-NO_TUNNEL=0
-OFFLINE=0
-LAN=0
-HOST_IP=""
-NO_MIGRATE=0
+# Configuration backend (.env ou .env.docker)
+if [ -f "$BACK_DIR/.env" ]; then
+    BACK_ENV="$BACK_DIR/.env"
+elif [ -f "$BACK_DIR/.env.docker" ]; then
+    BACK_ENV="$BACK_DIR/.env.docker"
+else
+    echo "❌ Fichier .env manquant dans Backend/"
+    exit 1
+fi
 
-for arg in "$@"; do
-  case "$arg" in
-    --no-expo)    NO_EXPO=1 ;;
-    --no-tunnel)  NO_TUNNEL=1 ;;
-    --offline)    OFFLINE=1 ;;
-    --lan)        LAN=1 ;;
-    --host-ip=*)  HOST_IP="${arg#*=}" ;;
-    --no-migrate) NO_MIGRATE=1 ;;
-    -h|--help)
-      cat << EOF
-Usage: $0 [OPTIONS]
+# Récupération du port backend (défaut: 3001)
+PORT=$(grep "^PORT=" "$BACK_ENV" 2>/dev/null | cut -d= -f2)
+PORT=${PORT:-3001}
 
-Options:
-  --no-expo         Ne pas démarrer Expo (arrêt après le backend)
-  --no-tunnel       Désactiver le tunnel Cloudflare
-  --offline         Mode offline pour Expo (LAN uniquement)
-  --lan             Forcer le mode LAN
-  --host-ip=IP      Spécifier l'IP hôte pour le LAN
-  --no-migrate      Skip les migrations Prisma
-  -h, --help        Afficher cette aide
+# Détection DB locale vs distante
+USE_LOCAL_DB=0
+if grep -q "localhost:5433\|@db:5432" "$BACK_ENV" 2>/dev/null; then
+    USE_LOCAL_DB=1
+fi
 
-Exemples:
-  $0                       # Lancement standard (Supabase)
-  $0 --no-tunnel --lan     # Mode LAN sans tunnel
-EOF
-      exit 0 ;;
-    *) echo "⚠️  Option inconnue: $arg (utilisez --help)" >&2 ;;
-  esac
+echo "📁 Dossier: $ROOT_DIR"
+echo "🌐 Port API: $PORT"
+if [ $USE_LOCAL_DB -eq 1 ]; then
+    echo "🗄️  Mode: Base de données locale (PostgreSQL)"
+else
+    echo "🗄️  Mode: Base de données distante (Supabase/Neon)"
+fi
+
+# 1. Nettoyage
+echo ""
+echo "🧹 Nettoyage..."
+docker compose down 2>/dev/null || true
+pkill -f cloudflared 2>/dev/null || true
+
+# 2. Démarrage du backend
+echo ""
+echo "▶️  Démarrage du backend..."
+if [ $USE_LOCAL_DB -eq 1 ]; then
+    echo "   Démarrage de PostgreSQL local + backend..."
+    COMPOSE_PROFILES=local-db docker compose up -d
+else
+    echo "   Démarrage du backend seul..."
+    docker compose up -d backend
+fi
+
+# 3. Attente que l'API réponde
+echo ""
+echo "⏳ Attente de l'API locale sur le port $PORT..."
+
+# on laisse Docker respirer un peu
+sleep 5
+
+READY=0
+for i in {1..30}; do
+    if curl -s "http://localhost:$PORT/api/v1/health" >/dev/null 2>&1; then
+        READY=1
+        echo "✅ API locale prête sur le port $PORT!"
+        break
+    fi
+    sleep 2
 done
 
-# ─────────────────────────────────────────────────────────────
-#  Helpers
-# ─────────────────────────────────────────────────────────────
-have() { command -v "$1" >/dev/null 2>&1; }
-die() { echo -e "\n❌ $*" >&2; exit 1; }
-info() { echo "ℹ️  $*"; }
-success() { echo "✅ $*"; }
-warn() { echo "⚠️  $*"; }
-
-log_section() {
-  echo ""
-  echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
-  echo "  $*"
-  echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
-}
-
-wait_for_service() {
-  local url="$1"
-  local max_attempts="${2:-60}"
-  local service_name="${3:-Service}"
-  
-  # Délai initial pour laisser le conteneur démarrer
-  info "Attente de $((5)) secondes pour le démarrage du conteneur…"
-  sleep 5
-  
-  for i in $(seq 1 "$max_attempts"); do
-    # Force IPv4 avec -4 pour éviter les problèmes IPv6
-    if curl -4 -fsS "$url" >/dev/null 2>&1; then
-      success "$service_name est prêt"
-      return 0
-    fi
-    # Debug tous les 10s
-    if [ $((i % 10)) -eq 0 ]; then
-      warn "Toujours en attente après ${i}s... (tentative $i/$max_attempts)"
-      info "Vérification de l'état du conteneur:"
-      docker ps --filter name=lockfit_backend --format "table {{.Names}}\t{{.Status}}\t{{.Ports}}"
-    fi
-    sleep 1
-  done
-  return 1
-}
-
-parse_db_host_port() {
-  local url="$1"
-  local at_part=${url#*@}
-  [ "$at_part" = "$url" ] && return 1
-  local host_port=${at_part%%/*}
-  local host=${host_port%%:*}
-  local port=${host_port#*:}
-  [ "$host" = "$port" ] && port=5432
-  echo "$host $port"
-}
-
-can_tcp_connect() {
-  local host="$1" port="$2"
-  if have nc; then
-    nc -z -w 3 "$host" "$port" >/dev/null 2>&1
-  else
-    (exec 3<>/dev/tcp/$host/$port) >/dev/null 2>&1 || return 1
-    exec 3>&- 3<&-
-  fi
-}
-
-# ─────────────────────────────────────────────────────────────
-#  Dépendances
-# ─────────────────────────────────────────────────────────────
-log_section "🔍 Vérification des dépendances"
-if have docker; then DC=(docker compose); elif have docker-compose; then DC=(docker-compose); else die "Docker n'est pas installé"; fi
-for bin in curl grep sed awk; do have "$bin" || die "Commande manquante: $bin"; done
-if [ "$NO_TUNNEL" -eq 0 ]; then have cloudflared || die "cloudflared manquant (installez-le: sudo apt install cloudflared)"; fi
-success "Toutes les dépendances sont présentes"
-
-# ─────────────────────────────────────────────────────────────
-#  Environnement (FIX: BACK_ENV défini proprement)
-# ─────────────────────────────────────────────────────────────
-log_section "⚙️  Configuration de l'environnement"
-
-# Choisir le .env backend (.env prioritaire, sinon .env.docker)
-BACK_ENV="$BACK_ENV_LOCAL"
-if [ ! -f "$BACK_ENV" ] && [ -f "$BACK_ENV_DOCKER" ]; then
-  BACK_ENV="$BACK_ENV_DOCKER"
+if [ $READY -ne 1 ]; then
+    echo "❌ L'API ne répond pas sur le port $PORT"
+    echo ""
+    echo "📋 Logs du backend:"
+    docker compose logs backend --tail=30
+    echo ""
+    echo "🔍 Ports mappés:"
+    docker compose ps
+    echo ""
+    echo "💡 Le backend écoute sur 3001 dans le conteneur."
+    echo "   Vérifie le port mapping dans docker-compose.yml."
+    exit 1
 fi
 
-[ -f "$BACK_ENV" ] || die "Fichier backend .env manquant: $BACK_ENV_LOCAL ou $BACK_ENV_DOCKER"
+# 4. Démarrage du tunnel Cloudflare
+echo ""
+echo "🌐 Démarrage du tunnel Cloudflare..."
+LOG_FILE="/tmp/cloudflared.lockfit.log"
+rm -f "$LOG_FILE"
 
-# Déterminer le PORT (depuis BACK_ENV ou défaut)
-PORT=$(grep -E '^PORT=' "$BACK_ENV" | tail -1 | cut -d= -f2 || true); PORT=${PORT:-3001}
+cloudflared tunnel --url "http://localhost:$PORT" > "$LOG_FILE" 2>&1 &
+TUNNEL_PID=$!
 
-# Déterminer la DATABASE_URL (ordre de priorité)
-# 1) variable d'environnement hôte (export DATABASE_URL=...)
-# 2) BACK_ENV (./Backend/.env)
-# 3) BACK_ENV_DOCKER (./Backend/.env.docker)
-DBURL="${DATABASE_URL:-}"
-if [ -z "$DBURL" ] && [ -f "$BACK_ENV" ]; then
-  DBURL=$(grep -E '^DATABASE_URL=' "$BACK_ENV" | tail -1 | cut -d= -f2- || true)
-fi
-if [ -z "$DBURL" ] && [ -f "$BACK_ENV_DOCKER" ]; then
-  DBURL=$(grep -E '^DATABASE_URL=' "$BACK_ENV_DOCKER" | tail -1 | cut -d= -f2- || true)
-fi
-[ -n "$DBURL" ] || die "Aucune DATABASE_URL trouvée. Définis-la via export DATABASE_URL=..., ou ajoute-la dans $BACK_ENV_DOCKER"
-
-COMPOSE_FILES=(-f "$ROOT_DIR/docker-compose.yml")
-COMPOSE_FLAGS=()
-
-# Toujours sans service db local → override pour retirer depends_on
-OVERRIDE_FILE="$(mktemp)"
-cat > "$OVERRIDE_FILE" <<YAML
-services:
-  backend:
-    depends_on: []
-    environment:
-      DATABASE_URL: "${DBURL}"
-      PORT: "${PORT}"
-      HOST: "0.0.0.0"
-YAML
-COMPOSE_FILES+=(-f "$OVERRIDE_FILE")
-compose() { "${DC[@]}" "${COMPOSE_FILES[@]}" "${COMPOSE_FLAGS[@]}" "$@"; }
-
-# Pré‑check connectivité distante
-if hp=$(parse_db_host_port "$DBURL"); then
-  host=${hp%% *}; port=${hp##* }
-  info "Test de connectivité DB distante: $host:$port …"
-  if ! can_tcp_connect "$host" "$port"; then
-    echo ""; die "Impossible de joindre la base distante ($host:$port).
-Vérifie ta connexion/pare-feu/ISP.
-DATABASE_URL actuel : $DBURL"
-  fi
-else
-  warn "Impossible d'interpréter l'URL DB. On continue tel quel."
-fi
-
-echo "📁 Répertoire   : $ROOT_DIR"
-echo "🧩 Backend .env : $BACK_ENV"
-echo "🌐 Port API     : $PORT"
-echo "🗄️  Base de données: distante (Neon/Supabase)"
-
-# ─────────────────────────────────────────────────────────────
-#  Build backend (Prisma CLI)
-# ─────────────────────────────────────────────────────────────
-info "🏗️  Build image backend (pour Prisma CLI)…"
-compose build backend >/dev/null || die "Échec du build backend"
-success "Image backend construite"
-
-# ─────────────────────────────────────────────────────────────
-#  Migrations Prisma (distantes)
-# ─────────────────────────────────────────────────────────────
-if [ "$NO_MIGRATE" -eq 0 ]; then
-  info "🗂️  Prisma: migrate deploy (non‑interactif)…"
-  OK=0
-  for i in {1..20}; do
-    if DATABASE_URL="$DBURL" compose run --rm -e DATABASE_URL="$DBURL" backend sh -lc 'echo "Using DATABASE_URL=$DATABASE_URL"; npx --yes prisma migrate deploy --schema ./prisma/schema.prisma'; then
-      OK=1; success "Migrations appliquées"; break
-    fi
-    [ $((i % 5)) -eq 0 ] && warn "Tentative $i/20…"
-    sleep 2
-  done
-
-  if [ "$OK" -eq 0 ]; then
-    warn "migrate deploy KO → fallback prisma db push"
-    DATABASE_URL="$DBURL" compose run --rm -e DATABASE_URL="$DBURL" backend sh -lc 'echo "Using DATABASE_URL=$DATABASE_URL"; npx --yes prisma db push --schema ./prisma/schema.prisma' || die "Échec Prisma même en fallback. URL utilisée: $DBURL"
-  fi
-else
-  info "Migrations Prisma ignorées (--no-migrate)"
-fi
-
-# ─────────────────────────────────────────────────────────────
-#  Backend
-# ─────────────────────────────────────────────────────────────
-info "▶️  Nettoyage des conteneurs existants…"
-compose down 2>/dev/null || true
-
-# Forcer l'arrêt du conteneur backend s'il existe encore
-if docker ps -a --format '{{.Names}}' | grep -q "^lockfit_backend$"; then
-  info "Arrêt forcé du conteneur lockfit_backend…"
-  docker stop lockfit_backend 2>/dev/null || true
-  docker rm lockfit_backend 2>/dev/null || true
-fi
-
-info "▶️  Docker: backend …"
-compose up -d backend
-info "⏳ Attente de l'API (http://localhost:$PORT/api/v1/health)…"
-if ! wait_for_service "http://localhost:$PORT/api/v1/health" 90 "API Backend"; then
-  echo ""
-  echo "❌ L'API ne répond pas après 90s. Derniers logs backend :"
-  compose logs --tail=120 backend || true
-  die "Impossible de démarrer l'API Backend"
-fi
-
-# ─────────────────────────────────────────────────────────────
-#  Cloudflare Tunnel
-# ─────────────────────────────────────────────────────────────
-TUNNEL_URL="http://localhost:$PORT"
-CF_PID=""
+# fonction cleanup (ctrl+c ou sortie)
 cleanup() {
-  # Nettoyage à la sortie (remote-only)
-  [ -n "$CF_PID" ] && kill "$CF_PID" 2>/dev/null || true
-  [ -n "$OVERRIDE_FILE" ] && rm -f "$OVERRIDE_FILE" 2>/dev/null || true
+    echo ""
+    echo "🧹 Arrêt du tunnel..."
+    kill $TUNNEL_PID 2>/dev/null || true
 }
-trap cleanup EXIT
+trap cleanup EXIT INT TERM
 
-if [ "$NO_TUNNEL" -eq 0 ]; then
-  log_section "🌐 Configuration du tunnel Cloudflare"
-  rm -f "$LOG_FILE"
-  ( cloudflared tunnel --url "http://localhost:$PORT" 2>&1 | tee "$LOG_FILE" ) &
-  CF_PID=$!
-
-  info "⏳ Attente de l'URL trycloudflare.com…"
-  for i in $(seq 1 40); do
-    if grep -qE 'https://[a-z0-9-]+\.trycloudflare\.com' "$LOG_FILE" 2>/dev/null; then
-      TUNNEL_URL="$(grep -m1 -oE 'https://[a-z0-9-]+\.trycloudflare\.com' "$LOG_FILE")"
-      success "Tunnel établi: $TUNNEL_URL"; break
+# 5. Récupération de l'URL publique du tunnel
+echo ""
+echo "⏳ Récupération de l'URL publique du tunnel..."
+TUNNEL_URL=""
+for i in {1..30}; do
+    if [ -f "$LOG_FILE" ]; then
+        TUNNEL_URL=$(grep -oE 'https://[a-z0-9-]+\.trycloudflare\.com' "$LOG_FILE" 2>/dev/null | head -1)
+        if [ -n "$TUNNEL_URL" ]; then
+            echo "✅ Tunnel établi: $TUNNEL_URL"
+            break
+        fi
     fi
     sleep 1
-    [ "$i" -eq 40 ] && die "Impossible d'établir le tunnel. Voir: $LOG_FILE"
-  done
+done
+
+if [ -z "$TUNNEL_URL" ]; then
+    echo "❌ Impossible d'obtenir l'URL du tunnel Cloudflare"
+    echo "─── LOG CLOUDFLARE ───"
+    cat "$LOG_FILE"
+    echo "──────────────────────"
+    exit 1
+fi
+
+# 6. Test du tunnel
+echo ""
+echo "🔍 Test de connexion via le tunnel..."
+sleep 2
+if curl -s "$TUNNEL_URL/api/v1/health" >/dev/null 2>&1; then
+    echo "✅ API accessible via le tunnel !"
 else
-  info "Tunnel Cloudflare désactivé (--no-tunnel)"
+    echo "⚠️  Le tunnel répond mais /api/v1/health n'est pas encore OK via l'externe."
+    echo "   (possible petit délai DNS Cloudflare)"
 fi
 
-# ─────────────────────────────────────────────────────────────
-#  Frontend
-# ─────────────────────────────────────────────────────────────
-log_section "📝 Configuration du frontend"
-mkdir -p "$FRONT_DIR"
-printf "EXPO_PUBLIC_API_URL=%s\n" "$TUNNEL_URL" > "$FRONT_ENV"
-success "Fichier $FRONT_ENV créé"
-cat "$FRONT_ENV"
+# 7. Configuration du frontend
+echo ""
+echo "📝 Configuration du frontend (.env Expo)..."
+echo "EXPO_PUBLIC_API_URL=$TUNNEL_URL" > "$FRONT_DIR/.env"
+echo "✅ Frontend configuré avec: $TUNNEL_URL"
 
-if [ "$NO_EXPO" -eq 1 ]; then
-  echo ""; info "Mode --no-expo activé. Backend disponible sur: $TUNNEL_URL/api/v1"; exit 0
-fi
+# 8. Récap visuel
+echo ""
+echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
+echo "✨ Configuration terminée !"
+echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
+echo "📱 API locale      : http://localhost:$PORT"
+echo "🌍 API publique    : $TUNNEL_URL"
+echo "🔗 Healthcheck     : $TUNNEL_URL/api/v1/health"
+echo ""
+echo "👉 Cette URL est déjà écrite dans Frontend/.env"
+echo "   (EXPO_PUBLIC_API_URL)"
+echo ""
+echo "Appuie sur Entrée pour lancer Expo..."
+read -r
 
-# ─────────────────────────────────────────────────────────────
-#  Expo
-# ─────────────────────────────────────────────────────────────
-log_section "📱 Démarrage d'Expo"
+# 9. Lancement d'Expo
+echo ""
+echo "📱 Lancement d'Expo..."
 cd "$FRONT_DIR"
-if [ "$OFFLINE" -eq 1 ] || [ "$LAN" -eq 1 ]; then
-  EXPO_ARGS="--lan -c"
-  if [ -z "$HOST_IP" ] && command -v powershell.exe >/dev/null 2>&1; then
-    HOST_IP="$(powershell.exe -NoProfile -Command \
-      "(Get-NetIPAddress -AddressFamily IPv4 | ? { \$_.IPAddress -match '^(10\\.|172\\.|192\\.168\\.)' } | select -First 1 -ExpandProperty IPAddress)" \
-      | tr -d '\r')"
-  fi
-  if [ -n "$HOST_IP" ]; then
-    info "Mode LAN avec IP: $HOST_IP"
-    REACT_NATIVE_PACKAGER_HOSTNAME="$HOST_IP" EXPO_OFFLINE=1 npx expo start $EXPO_ARGS
-  else
-    info "Mode LAN (IP par défaut)"; EXPO_OFFLINE=1 npx expo start $EXPO_ARGS
-  fi
+
+# On tente le tunnel Expo d'abord
+if npx expo start --tunnel -c; then
+    echo "✅ Expo tourne avec --tunnel"
 else
-  info "Tentative de démarrage avec tunnel…"
-  npx expo start --tunnel -c || { warn "Tunnel Expo non disponible, basculement en mode LAN"; EXPO_OFFLINE=1 npx expo start --lan -c; }
+    echo ""
+    echo "⚠️  Tunnel Expo indisponible. Fallback en mode LAN..."
+    npx expo start --lan -c
 fi
+
+# 10. Tant que Expo tourne, on garde le script en vie
+# ça évite que le trap cleanup tue le tunnel Cloudflare trop tôt
+wait
