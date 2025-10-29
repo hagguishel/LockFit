@@ -229,4 +229,14 @@ Les derniers sprints viseront à finaliser :
 - [Haggui Razafimaitso](https://github.com/hagguishel) — Backend, sécurité, tests E2E, infrastructure Docker
 - [Tom Lagarde](https://github.com/tmlgde) — Frontend, UI, intégration Auth, gestion de compte
 
+---
+
+## 📋 Suivi de projet Trello
+
+🔗 [Tableau Trello — LockFit](https://trello.com/b/vIp1gBXf/trello-lockfit)
+
+Ce tableau a servi à organiser les sprints, suivre la progression des tâches (Back / Front),
+et prioriser les fonctionnalités du MVP jusqu’au Demoday.
+
+
 📅 **Version :** Rétrospective complète — Sprints 3 à 6 (Octobre 2025)
