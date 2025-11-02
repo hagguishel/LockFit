@@ -1,5 +1,5 @@
 // Fichier : src/authentification/authentification.controller.ts
-// Fichier qui expose les routes HTTP de l'authentification (signup, login, MFA).
+// Fichier qui expose les routes HTTP de l'authentification (signup, login, MFA, email verification, password reset).
 // Le controller NE contient pas la logique : il délègue tout à AuthService.
 // Les DTO ci-dessous servent à valider les entrées (class-validator).
 
@@ -11,21 +11,22 @@ import {
   UseGuards,
   Req,
   Get,
+  Query,
 } from '@nestjs/common';
-import { AuthGuard } from '@nestjs/passport';              // Protège les routes avec JWT
-import { Request } from 'express';                         //Type de l’objet req (utile quand on fait @Req() req: Request).
-import { IsEmail, IsNotEmpty, MinLength } from 'class-validator';
+import { AuthGuard } from '@nestjs/passport';
+import { Request } from 'express';
+import { IsEmail, IsNotEmpty, MinLength, IsString } from 'class-validator';
 
 import { AuthService } from './authentification.service';
 
 // ---------- DTOs (validation des payloads) ----------
 
 // Inscription
-class SignupDto {       //Classe décrivant les données attendues pour /signup.
+class SignupDto {
   @IsEmail()
   email!: string;
 
-  @MinLength(8) // règle minimale; on pourra durcir plus tard (majuscule, symbole, etc.)
+  @MinLength(8)
   password!: string;
 
   @IsNotEmpty()
@@ -36,7 +37,7 @@ class SignupDto {       //Classe décrivant les données attendues pour /signup.
 }
 
 // Connexion
-class LoginDto {        //DTO pour /login (email + mot de passe obligatoires).
+class LoginDto {
   @IsEmail()
   email!: string;
 
@@ -45,7 +46,7 @@ class LoginDto {        //DTO pour /login (email + mot de passe obligatoires).
 }
 
 // Vérifier un code TOTP pendant le login MFA
-class MfaVerifyTotpDto {       //DTO pour /mfa/verify (étape 2 du login MFA) : email + code TOTP.
+class MfaVerifyTotpDto {
   @IsEmail()
   email!: string;
 
@@ -54,7 +55,7 @@ class MfaVerifyTotpDto {       //DTO pour /mfa/verify (étape 2 du login MFA) : 
 }
 
 // Activer la MFA (code requis)
-class MfaCodeDto {      //DTO pour /mfa/enable (activer la MFA) : on attend uniquement le code TOTP.
+class MfaCodeDto {
   @IsNotEmpty()
   totpCode!: string;
 }
@@ -72,26 +73,33 @@ class RefreshDto {
   refresh!: string;
 }
 
+// Password reset
+class PasswordResetRequestDto {
+  @IsEmail()
+  email!: string;
+}
 
-@Controller('auth') // Préfixe complet pour matcher vos URLs curl
+class PasswordResetConfirmDto {
+  @IsString()
+  token!: string;
+
+  @MinLength(8)
+  newPassword!: string;
+}
+
+@Controller('auth')
 export class AuthController {
   constructor(private readonly authService: AuthService) {}
 
   // --------- SIGNUP ---------
-  // Route : POST /api/v1/auth/signup
-  // Objectif : créer un utilisateur (hash argon2) et renvoyer accessToken + user public
   @Post('signup')
   async signup(@Body() dto: SignupDto) {
     return this.authService.signup(dto);
   }
 
   // --------- LOGIN ---------
-  // Route : POST /api/v1/auth/login
-  // Objectif : vérifier email + mot de passe.
-  // - Si MFA désactivée : retourne accessToken immédiat.
-  // - Si MFA activée : ne retourne PAS de token; renvoie mfaRequired: true (step 2).
   @Post('login')
-  @HttpCode(200) // explicite (OK)
+  @HttpCode(200)
   async login(@Body() dto: LoginDto) {
     return this.authService.login(dto);
   }
@@ -103,16 +111,14 @@ export class AuthController {
   }
 
   // --------- MFA : créer le secret + otpauth URL (QR) ---------
-  // Route protégée (il faut être connecté)
   @Post('mfa/secret')
   @UseGuards(AuthGuard('jwt'))
   async mfaCreateSecret(@Req() req: Request) {
-    const userId = (req.user as any).sub; // défini par JwtStrategy.validate(payload)
+    const userId = (req.user as any).sub;
     return this.authService.mfaCreateSecret(userId);
   }
 
   // --------- MFA : activer après vérification du code ---------
-  // Route protégée (il faut être connecté)
   @Post('mfa/enable')
   @UseGuards(AuthGuard('jwt'))
   async mfaEnable(@Req() req: Request, @Body() body: MfaCodeDto) {
@@ -125,24 +131,59 @@ export class AuthController {
   async mfaVerifyTotp(@Body() body: MfaVerifyTotpDto) {
     return this.authService.mfaVerifyDuringLogin(body.email, body.totpCode);
   }
+
+  // --------- Refresh ---------
   @Post('refresh')
   @HttpCode(200)
   async refresh(@Body() body: RefreshDto) {
     return this.authService.refresh(body.refresh);
-}
+  }
 
+  // --------- Logout ---------
   @Post('logout')
   @HttpCode(200)
   async logout(@Req() req: Request) {
-  // 1) On lit le refresh token brut pour vérifier son hash et le marquer révoqué
     const authz = (req.headers['authorization'] as string) || '';
-  // 2) Le service révoque le refresh courant (sécurité)
     return this.authService.logout('', authz);
   }
 
   @UseGuards(AuthGuard('jwt'))
   @Get('me')
   Getme(@Req() req: Request) {
-    return req.user; // contien sub, email etc depuis JWT
+    return req.user;
+  }
+
+  // ============================
+  // ✉️ Email verification
+  // ============================
+
+  // 1) Demander l’envoi du lien de vérification (auth requis)
+  @UseGuards(AuthGuard('jwt'))
+  @Post('email/verify/request')
+  async requestEmailVerify(@Req() req: Request) {
+    const userId = (req.user as any)?.sub || (req.user as any)?.id;
+    return this.authService.requestEmailVerification(userId);
+  }
+
+  // 2) Valider le token reçu par e-mail (public)
+  @Get('email/verify')
+  async verifyEmail(@Query('token') token: string) {
+    return this.authService.verifyEmailToken(token);
+  }
+
+  // ============================
+  // 🔒 Password reset
+  // ============================
+
+  // 1️⃣ Demander un lien de réinitialisation
+  @Post('password/reset/request')
+  async requestPasswordReset(@Body() dto: PasswordResetRequestDto) {
+    return this.authService.requestPasswordReset(dto.email);
+  }
+
+  // 2️⃣ Confirmer le changement avec le token reçu par e-mail
+  @Post('password/reset/confirm')
+  async confirmPasswordReset(@Body() dto: PasswordResetConfirmDto) {
+    return this.authService.confirmPasswordReset(dto.token, dto.newPassword);
   }
 }

@@ -1,11 +1,11 @@
 generator client {
-  provider = "prisma-client-js"
+  provider        = "prisma-client-js"
   previewFeatures = ["driverAdapters"]
 }
 
 datasource db {
-  provider = "postgresql"
-  url      = env("DATABASE_URL")
+  provider  = "postgresql"
+  url       = env("DATABASE_URL")
   directUrl = env("DIRECT_URL")
 }
 
@@ -46,17 +46,20 @@ model PlanningJour {
 }
 
 model Utilisateur {
-  id            String         @id @default(cuid())
-  email         String         @unique
-  password      String
-  firstName     String
-  lastName      String
-  mfaEnabled    Boolean        @default(false)
-  mfaSecret     String?
-  createdAt     DateTime       @default(now())
-  updatedAt     DateTime       @updatedAt
-  MfaChallenge  MfaChallenge[]
-  refreshTokens RefreshToken[]
+  id                String             @id @default(cuid())
+  email             String             @unique
+  password          String
+  firstName         String
+  lastName          String
+  mfaEnabled        Boolean            @default(false)
+  mfaSecret         String?
+  createdAt         DateTime           @default(now())
+  updatedAt         DateTime           @updatedAt
+  MfaChallenge      MfaChallenge[]
+  refreshTokens     RefreshToken[]
+  emailVerification EmailVerification?
+  passwordResets    PasswordReset[]
+  emailVerifiedAt   DateTime?
 }
 
 model RefreshToken {
@@ -144,4 +147,23 @@ model WorkoutSet {
 enum PlanningJourStatus {
   PLANNED
   DONE
+}
+
+model EmailVerification {
+  id        String      @id @default(uuid())
+  userId    String      @unique
+  token     String      @unique
+  expiresAt DateTime
+  createdAt DateTime    @default(now())
+  user      Utilisateur @relation(fields: [userId], references: [id], onDelete: Cascade)
+}
+
+model PasswordReset {
+  id        String      @id @default(uuid())
+  userId    String
+  token     String      @unique
+  expiresAt DateTime
+  used      Boolean     @default(false)
+  createdAt DateTime    @default(now())
+  user      Utilisateur @relation(fields: [userId], references: [id], onDelete: Cascade)
 }

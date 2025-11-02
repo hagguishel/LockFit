@@ -16,6 +16,7 @@ import { PassportModule } from "@nestjs/passport"; // Integre les stratégies d'
 // Contrôleur + Service (ton code métier) )
 import { AuthService } from './authentification.service';
 import { AuthController } from './authentification.controller';
+import { NotificationsModule } from "../notifications/notifications.module";
 
 
 // Accès Base de données (Prisma)
@@ -81,6 +82,8 @@ function parseTTL(ttl: string | undefined, defaultSeconds: number): number {
                 },
             }),
         }),
+
+        NotificationsModule,
     ],
           // -------------------------------------------------
           // Routes exposées par ce module (ex: /api/v1/auth/login)

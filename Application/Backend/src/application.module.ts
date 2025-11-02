@@ -12,6 +12,7 @@ import { ExercisesModule } from './exercise/exercises.module';
 import { HealthController } from './commun/health.controller';
 import { AuthModule } from './authentification/authentification.module';
 import { HealthModule } from './commun/health.module';
+import { NotificationsModule } from './notifications/notifications.module';
 
 @Module({
   imports: [
@@ -23,7 +24,8 @@ import { HealthModule } from './commun/health.module';
     PlanningsModule,
     ExercisesModule,
     AuthModule,
-    HealthModule
+    HealthModule,
+    NotificationsModule
   ],
   controllers: [HealthController],
   providers: [

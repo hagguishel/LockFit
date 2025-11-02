@@ -1,6 +1,7 @@
 {
   "dependencies": {
     "@expo/vector-icons": "^15.0.2",
+    "@sendgrid/mail": "^8.1.6",
     "expo": "^54.0.13",
     "expo-constants": "~18.0.9",
     "expo-linking": "~8.0.8",
