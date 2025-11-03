@@ -27,6 +27,14 @@ export class WorkoutsController {                                // Contrôleur 
   update(@Param('id') id: string, @Body() dto: UpdateWorkoutDto) {
     return this.service.update(id, dto);
   }
+
+  @Patch(':id/sets/:setId/complete')
+  completeSet(
+    @Param('id') workoutId: string,
+    @Param('setId') setId: string,
+  ) {
+    return this.service.completeSet(workoutId, setId);
+  }
   // DELETE /api/v1/workouts/:id — supprime une séance
   @Delete(':id')
   remove(@Param('id') id: string) {

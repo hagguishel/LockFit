@@ -6,7 +6,7 @@ import {
 import { PrismaService } from '../prisma/prisma.service';
 import { CreateWorkoutDto } from './dto/create-workout.dto';
 import { UpdateWorkoutDto } from './dto/update-workout.dto';
-import { log } from 'console';
+
 
 @Injectable()
 export class WorkoutsService {
@@ -168,6 +168,27 @@ export class WorkoutsService {
       where: { id },
       data: { finishedAt: new Date() },
       include: this.includeRelations, // ✅ CORRIGÉ
+    });
+  }
+
+  async completeSet(workoutId: string, setId: string) {
+    //1) on verife que le set existe
+    const set = await this.prisma.workoutSet.findUnique({
+      where: { id: setId },
+      include: { item: { select: { workoutId: true } } },
+    });
+    if (!set) throw new NotFoundException('Set introuvable');
+    if (set.item.workoutId != workoutId) {
+      throw new BadRequestException('Set non lié a ce workout');
+    }
+
+    //2) si deja termine en renvoie
+    if (set.completed) return set;
+
+    //3) termine
+    return this.prisma.workoutSet.update({
+      where: { id: setId },
+      data: { completed: true },
     });
   }
 }
