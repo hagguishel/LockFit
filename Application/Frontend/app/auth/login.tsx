@@ -1,6 +1,14 @@
-// app/auth/login.tsx - VERSION DEBUG
+// app/auth/login.tsx - Ecran de connexion 
 import React, { useState } from "react";
-import { View, Text, TextInput, TouchableOpacity, ActivityIndicator, StyleSheet, Alert } from "react-native";
+import {
+  View,
+  Text,
+  TextInput,
+  TouchableOpacity,
+  ActivityIndicator,
+  StyleSheet,
+  Alert,
+} from "react-native";
 import { useRouter, Link } from "expo-router";
 import { Feather, Ionicons } from "@expo/vector-icons";
 import { login } from "@/api/auth";
@@ -19,9 +27,9 @@ export default function LoginRoute() {
   async function onSubmit() {
     if (!email || !password || loading) return;
     setLoading(true);
-    
+
     console.log("🔵 [LOGIN] Tentative de connexion...", { email });
-    
+
     try {
       if (MOCK_AUTH) {
         await new Promise((r) => setTimeout(r, 400));
@@ -45,10 +53,9 @@ export default function LoginRoute() {
       console.log("🔵 [LOGIN] Sauvegarde des tokens...");
       await saveTokens(res.tokens);
       console.log("✅ [LOGIN] Tokens sauvegardés avec vérification");
-      
-      // Petit délai pour laisser React/Expo digérer le changement d'état
-      await new Promise(r => setTimeout(r, 150));
-      
+
+      await new Promise((r) => setTimeout(r, 150));
+
       console.log("🔵 [LOGIN] Navigation vers (tabs)...");
       router.replace("/(tabs)");
       return;
@@ -57,7 +64,7 @@ export default function LoginRoute() {
       console.error("❌ [LOGIN] Status:", e?.status);
       console.error("❌ [LOGIN] Code:", e?.error);
       console.error("❌ [LOGIN] Message:", e?.message);
-      
+
       const status = e?.status ?? 0;
       const code = e?.error ?? "UNKNOWN";
 
@@ -66,9 +73,9 @@ export default function LoginRoute() {
       } else if (status === 429 || code === "TOO_MANY_ATTEMPTS") {
         Alert.alert("Erreur", "Trop de tentatives. Réessayez plus tard.");
       } else if (status === 0 || code === "NETWORK_ERROR") {
-        Alert.alert("Erreur réseau", `Vérifie ta connexion.\n\nDétails: ${e?.message || 'Aucun détail'}`);
+        Alert.alert("Erreur réseau", `Vérifie ta connexion.\n\nDétails: ${e?.message || "Aucun détail"}`);
       } else {
-        Alert.alert("Erreur", `Erreur inattendue (${status}).\n\n${e?.message || 'Aucun détail'}`);
+        Alert.alert("Erreur", `Erreur inattendue (${status}).\n\n${e?.message || "Aucun détail"}`);
       }
     } finally {
       setLoading(false);
@@ -143,11 +150,18 @@ export default function LoginRoute() {
           onPress={onSubmit}
           disabled={loading || !email || !password}
         >
-          {loading ? <ActivityIndicator color="#fff" /> : <Text style={styles.primaryBtnText}>Se connecter</Text>}
+          {loading ? (
+            <ActivityIndicator color="#fff" />
+          ) : (
+            <Text style={styles.primaryBtnText}>Se connecter</Text>
+          )}
         </TouchableOpacity>
 
-        {/* Mot de passe oublié */}
-        <TouchableOpacity style={styles.center} onPress={() => { /* à brancher plus tard */ }}>
+        {/* Mot de passe oublié → ICI on a branché */}
+        <TouchableOpacity
+          style={styles.center}
+          onPress={() => router.push("/auth/forgot-password")}
+        >
           <Text style={styles.linkGreen}>Mot de passe oublié ?</Text>
         </TouchableOpacity>
 
@@ -205,7 +219,15 @@ const styles = StyleSheet.create({
   screen: { flex: 1, backgroundColor: BG, paddingHorizontal: 16, paddingVertical: 24, justifyContent: "center" },
   card: { marginHorizontal: "auto", width: "100%", maxWidth: 420, gap: 14 },
   header: { alignItems: "center", marginBottom: 6 },
-  logo: { width: 64, height: 64, borderRadius: 16, backgroundColor: ACCENT, alignItems: "center", justifyContent: "center", marginBottom: 16 },
+  logo: {
+    width: 64,
+    height: 64,
+    borderRadius: 16,
+    backgroundColor: ACCENT,
+    alignItems: "center",
+    justifyContent: "center",
+    marginBottom: 16,
+  },
   title: { fontSize: 28, fontWeight: "800", color: TEXT, marginBottom: 4 },
   subtitle: { fontSize: 16, fontWeight: "700", color: TEXT, opacity: 0.9 },
   field: { gap: 6 },
@@ -225,17 +247,39 @@ const styles = StyleSheet.create({
     fontSize: 16,
   },
   eyeBtn: { position: "absolute", right: 12, padding: 6 },
-  primaryBtn: { backgroundColor: "#1a1a35", height: 48, borderRadius: 14, alignItems: "center", justifyContent: "center", marginTop: 4 },
+  primaryBtn: {
+    backgroundColor: "#1a1a35",
+    height: 48,
+    borderRadius: 14,
+    alignItems: "center",
+    justifyContent: "center",
+    marginTop: 4,
+  },
   primaryBtnText: { color: "#fff", fontSize: 16, fontWeight: "700" },
   center: { alignItems: "center", marginTop: 8 },
   linkGreen: { color: ACCENT, fontWeight: "600", textDecorationLine: "underline", marginTop: 4 },
-  outlineBtn: { height: 48, borderRadius: 14, alignItems: "center", justifyContent: "center", borderWidth: 1.5, borderColor: ACCENT, marginTop: 10 },
+  outlineBtn: {
+    height: 48,
+    borderRadius: 14,
+    alignItems: "center",
+    justifyContent: "center",
+    borderWidth: 1.5,
+    borderColor: ACCENT,
+    marginTop: 10,
+  },
   outlineBtnText: { color: ACCENT, fontSize: 16, fontWeight: "700" },
   separatorRow: { flexDirection: "row", alignItems: "center", gap: 10, marginTop: 18 },
   separator: { flex: 1, height: 1, backgroundColor: INPUT_BORDER },
   separatorText: { color: MUTED, fontSize: 12 },
   socialRow: { flexDirection: "row", gap: 10, marginTop: 14 },
-  socialBtn: { flex: 1, height: 48, backgroundColor: "#2a2a4a", borderRadius: 12, alignItems: "center", justifyContent: "center" },
+  socialBtn: {
+    flex: 1,
+    height: 48,
+    backgroundColor: "#2a2a4a",
+    borderRadius: 12,
+    alignItems: "center",
+    justifyContent: "center",
+  },
   socialBtnText: { color: TEXT, fontSize: 15, fontWeight: "600" },
   sslNote: { color: MUTED, fontSize: 12 },
 });
