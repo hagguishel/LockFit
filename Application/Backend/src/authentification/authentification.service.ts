@@ -520,12 +520,9 @@ export class AuthService {
     });
 
     // NEW: on essaie d'abord d'utiliser l'URL du front
-    const frontendUrl = process.env.FRONTEND_RESET_URL;
-    const backendBase = process.env.APP_BASE_URL || `http://localhost:${process.env.PORT || 3001}`;
+    const baseUrl = process.env.APP_BASE_URL || `http://localhost:${process.env.PORT || 3001}`;
 
-    const resetUrl = frontendUrl
-      ? `${frontendUrl}?token=${token}`
-      : `${backendBase}/reset-password?token=${token}`;
+    const resetUrl = `${baseUrl}/reset-password?token=${token}`;
 
     // Envoi d’email (si SendGrid configuré)
     if (typeof (this.mail as any).sendPasswordReset === 'function') {
