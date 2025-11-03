@@ -519,18 +519,17 @@ export class AuthService {
       },
     });
 
-    const baseUrl = process.env.APP_BASE_URL || `http://localhost:${process.env.PORT || 3001}`;
-    // Lien destiné au FRONT (page "nouveau mot de passe") qui POSTera ensuite sur /auth/password/reset/confirm
-    const resetUrl =
-      process.env.PASSWORD_RESET_URL /* optionnel si tu veux un lien front dédié */
-        || `${baseUrl}/reset-password?token=${token}`;
+    // NEW: on essaie d'abord d'utiliser l'URL du front
+    const frontendUrl = process.env.FRONTEND_RESET_URL;
+    const backendBase = process.env.APP_BASE_URL || `http://localhost:${process.env.PORT || 3001}`;
+
+    const resetUrl = frontendUrl
+      ? `${frontendUrl}?token=${token}`
+      : `${backendBase}/reset-password?token=${token}`;
 
     // Envoi d’email (si SendGrid configuré)
-    // (Cette méthode est à ajouter dans SendgridService si absente)
-    // @ts-ignore
     if (typeof (this.mail as any).sendPasswordReset === 'function') {
-      // @ts-ignore
-      await this.mail.sendPasswordReset(user.email, resetUrl, 30);
+      await (this.mail as any).sendPasswordReset(user.email, resetUrl, 30);
     }
 
     return genericResponse;
