@@ -1,4 +1,5 @@
-import React, { useState } from "react";
+// app/(tabs)/workouts/new.tsx
+import React from "react";
 import {
   Alert,
   StyleSheet,
@@ -10,100 +11,78 @@ import {
   Platform,
   ActivityIndicator,
   FlatList,
+  ScrollView,
 } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
-import { Stack, useRouter } from "expo-router";
+import { useLocalSearchParams, useRouter } from "expo-router";
+import { LinearGradient } from "expo-linear-gradient";
+import { BlurView } from "expo-blur";
+import { useBottomTabBarHeight } from "@react-navigation/bottom-tabs";
+import { Ionicons } from "@expo/vector-icons";
 import { createWorkout } from "@/lib/workouts";
-import { listExercises } from "@/lib/exercises";
+import {  type ExerciseDef } from "@/lib/exercises";
 
-// Représente un exercice que l'utilisateur a ajouté au brouillon avant d'envoyer au backend
-type TempExercise = {
-  id: string;          // id local uniquement pour l'UI/FlatList
-  exerciseId: string;  // ID backend réel (Exercise.id en base)
-  name: string;        // affichage
-  setsCount: number;   // combien de séries prévues
-  repsTarget: number;  // combien de reps par série
-};
+// Représente un exercice ajouté au brouillon
 
 export default function NewWorkoutScreen() {
   const router = useRouter();
+  const tabBarHeight = useBottomTabBarHeight();
 
-  // Titre de la séance
-  const [title, setTitle] = useState("");
+  // si on revient de /exercises?mode=pick
+  const params = useLocalSearchParams<{
+    pickedId?: string;
+    pickedName?: string;
+    pickedPrimaryMuscle?: string;
+    current?: string;
+  }>();
 
-  // Exercices en brouillon pour cette séance
-  const [exercises, setExercises] = useState<TempExercise[]>([]);
+  const [title, setTitle] = React.useState("");
+  const [exercises, setExercises] = React.useState<ExerciseDef[]>([]);
+  const [saving, setSaving] = React.useState(false);
 
-  // Loading pour la création (POST /workouts)
-  const [saving, setSaving] = useState(false);
+  // quand on revient de la lib d'exos avec un choix
 
-  // Loading pour l'ajout d'un exercice (GET /exercises)
-  const [fetchingExercise, setFetchingExercise] = useState(false);
-
-  // Ajoute un exercice depuis la base (en prenant le premier dispo pour le moment)
-  async function handleAddExerciseFromBackend() {
-    try {
-      setFetchingExercise(true);
-
-      // 1. Appel API GET /exercises
-      const available = await listExercises();
-      console.log("[new.tsx] 📚 exercices dispo:", available);
-
-      if (!available || available.length === 0) {
-        Alert.alert(
-          "Pas d'exercice",
-          "Aucun exercice trouvé côté serveur."
-        );
-        return;
+  React.useEffect(() => {
+    if (params.current) {
+      try {
+        const parsed = JSON.parse(params.current as string) as ExerciseDef[];
+        setExercises(parsed);
+      } catch (e) {
+        console.log("[new] JSON current invalide", e);
       }
-
-      // 2. MVP : on prend le premier exo renvoyé par le backend
-      //    (plus tard tu pourras ouvrir un sélecteur pour choisir)
-      const picked = available[0];
-
-      const newExercise: TempExercise = {
-        id: Math.random().toString(36).slice(2), // juste pour le rendu local
-        exerciseId: picked.id,                  // <-- ID RÉEL du backend
-        name: picked.name,
-        setsCount: 3,
-        repsTarget: 10,
-      };
-
-      console.log("[new.tsx] ➕ Ajout exercise temp:", newExercise);
-
-      setExercises((curr) => [...curr, newExercise]);
-    } catch (err: any) {
-      console.log("[new.tsx] 💥 ERREUR listExercises():", err);
-      Alert.alert(
-        "Erreur",
-        err?.message || "Impossible de récupérer les exercices."
-      );
-    } finally {
-      setFetchingExercise(false);
     }
-  }
+  }, [params.current]);
 
-  // Supprime un exercice du brouillon avant envoi
+  React.useEffect(() => {
+    if (params.pickedId && params.pickedName) {
+      const slug =
+      params.pickedName
+      ?.toLowerCase()
+      .replace(/\s+/g, "-")
+      .replace(/[^a-z0-9-]/g, "") ?? "";
+
+      const newExercise: ExerciseDef = {
+
+        id: params.pickedId,
+        name: params.pickedName,
+        slug,
+        primaryMuscle: params.pickedPrimaryMuscle ?? "",
+      };
+      setExercises((curr) => [...curr, newExercise]);
+    }
+  }, [params.pickedId, params.pickedName, params.pickedPrimaryMuscle]);
+
+  // supprimer un exo du brouillon
   function handleRemoveExercise(id: string) {
-    console.log("[new.tsx] ❌ Suppression exercise temp id =", id);
     setExercises((curr) => curr.filter((e) => e.id !== id));
   }
 
-  // Envoi final : POST /workouts
+  // créer la séance → POST /workouts
   async function handleCreate() {
     const trimmed = title.trim();
 
-    // Validation simple
     if (!trimmed) {
-      Alert.alert(
-        "Titre requis",
-        "Merci d'indiquer un titre pour votre entraînement."
-      );
-      return;
-    }
-
-    if (trimmed.length > 50) {
-      Alert.alert("Titre trop long", "50 caractères maximum.");
+      Alert.alert("Titre requis", "Merci d'indiquer un titre.");
       return;
     }
 
@@ -118,315 +97,389 @@ export default function NewWorkoutScreen() {
     try {
       setSaving(true);
 
-      // On construit le payload pour le backend NestJS
       const payload = {
         title: trimmed,
-        items: exercises.map((ex, index) => {
-          // Génère "setsCount" séries identiques { reps: repsTarget }
-          const generatedSets = Array.from(
-            { length: ex.setsCount },
-            () => ({ reps: ex.repsTarget })
-          );
-
-          return {
-            order: index + 1,          // 🔥 IMPORTANT : le backend veut 1,2,3... pas 0,1,2
-            exerciseId: ex.exerciseId, // 🔥 IMPORTANT : ID réel de Exercise en base
-            sets: generatedSets,       // ex: [{ reps:10 }, { reps:10 }, { reps:10 }]
-          };
-        }),
+        items: exercises.map((ex, index) => ({
+          order: index + 1,
+          exerciseId: ex.id,
+          sets: []
+        })),
       };
 
-      console.log("[new.tsx] 🚀 Payload envoyé à createWorkout:", payload);
-
-      // Appel API -> POST /workouts
       const w = await createWorkout(payload);
 
-      console.log("[new.tsx] ✅ Réponse createWorkout:", w);
-
       if (!w?.id) {
-        Alert.alert(
-          "Erreur",
-          "Réponse inattendue du serveur (création sans id)."
-        );
+        Alert.alert("Erreur", "Réponse inattendue du serveur.");
         return;
       }
 
-      // Reset du formulaire local
+      // reset
       setTitle("");
       setExercises([]);
 
-      // Redirection vers l'écran détail du workout créé
+      // aller sur le détail
       router.replace(`/workouts/${w.id}`);
     } catch (e: any) {
-      console.log("[new.tsx] 💥 ERREUR createWorkout:", e);
-      Alert.alert(
-        "Erreur",
-        e?.message || "Impossible de créer la séance."
-      );
+      Alert.alert("Erreur", e?.message || "Impossible de créer la séance.");
     } finally {
       setSaving(false);
     }
   }
 
-  // Rendu d'une ligne d'exercice dans la liste locale
-  function renderExerciseRow({ item }: { item: TempExercise }) {
+  // rendu d'un exo dans le brouillon
+  function renderExerciseRow({
+     item,
+    index,
+  }: {
+    item: ExerciseDef;
+    index: number;
+  }) {
     return (
-      <View style={s.exerciseRow}>
-        <View style={{ flex: 1 }}>
-          <Text style={s.exerciseName}>{item.name}</Text>
-          <Text style={s.exerciseMeta}>
-            {item.setsCount} x {item.repsTarget} reps
-          </Text>
-
-          {/* debug : afficher l'ID backend pour vérifier qu'on envoie bien le bon */}
-          <Text style={s.exerciseIdDebug}>{item.exerciseId}</Text>
+      <View style={styles.exerciseCard}>
+        <View
+          style={[
+            styles.exerciseIndex,
+            index === 0 ? styles.exerciseIndexFirst : null,
+          ]}
+        >
+          <Text style={styles.exerciseIndexText}>{index + 1}</Text>
         </View>
 
-        <Pressable
-          style={s.removeBtn}
+        <View style={{ flex: 1 }}>
+          <Text style={styles.exerciseName}>{item.name}</Text>
+          <View style={styles.exerciseMetaRow}>
+            <Text style={styles.exerciseMeta}>
+              {item.primaryMuscle && item.primaryMuscle.length > 0
+              ? item.primaryMuscle
+              : "Muscle non renseigné"}
+            </Text>
+          </View>
+
+          <Pressable
+          style={styles.removeBtn}
           onPress={() => handleRemoveExercise(item.id)}
           disabled={saving}
-        >
-          <Text style={s.removeBtnText}>Suppr</Text>
-        </Pressable>
+          >
+            <Text style={styles.removeBtnText}>Supp</Text>
+          </Pressable>
+        </View>
       </View>
     );
   }
 
   return (
-    <SafeAreaView style={s.container} edges={["top", "bottom"]}>
-      <Stack.Screen
-        options={{
-          title: "Nouvelle séance",
-          headerShown: true,
-          headerStyle: {
-            backgroundColor: "#0F1420",
-          },
-          headerTintColor: "#E6F0FF",
-          headerTitleStyle: {
-            fontWeight: "700",
-          },
-        }}
-      />
+    <SafeAreaView style={styles.container} edges={["top", "bottom"]}>
+      {/* HEADER gradient */}
+      <LinearGradient
+        colors={["#1a1a35", "#0f0f23"]}
+        start={{ x: 0, y: 0 }}
+        end={{ x: 0, y: 1 }}
+        style={styles.header}
+      >
+        <Pressable style={styles.backBtn} onPress={() => router.back()}>
+          <Text style={{ color: "#fff", fontSize: 16 }}>←</Text>
+        </Pressable>
+        <View style={{ flex: 1 }}>
+          <Text style={styles.headerTitle}>Nouvelle séance</Text>
+          <Text style={styles.headerSubtitle}>Crée ton entraînement</Text>
+        </View>
+        <View style={{ width: 30 }} />
+      </LinearGradient>
 
       <KeyboardAvoidingView
         behavior={Platform.select({ ios: "padding", android: undefined })}
         style={{ flex: 1 }}
       >
-        <View style={s.card}>
-          {/* Titre de la séance */}
-          <Text style={s.label}>Nom de la séance</Text>
+        <ScrollView
+          showsVerticalScrollIndicator={false}
+          contentContainerStyle={{ paddingBottom: tabBarHeight + 140 }}
+        >
+          {/* bloc info glass */}
+          <BlurView intensity={25} tint="dark" style={styles.infoCard}>
+            <Text style={styles.infoTitle}>Détails de la séance</Text>
+            <Text style={styles.infoText}>
+              Donne un nom et ajoute tes exercices depuis ta bibliothèque.
+            </Text>
+          </BlurView>
 
-          <TextInput
-            value={title}
-            onChangeText={setTitle}
-            placeholder="Ex : Push Day, Pull Day, Legs…"
-            placeholderTextColor="#6B7280"
-            style={s.input}
-            maxLength={50}
-            returnKeyType="done"
-            editable={!saving}
-          />
+          {/* champ titre */}
+          <View style={styles.field}>
+            <Text style={styles.label}>Nom de la séance</Text>
+            <TextInput
+              value={title}
+              onChangeText={setTitle}
+              placeholder="Ex : Push Day, Full body, Dos…"
+              placeholderTextColor="#6B7280"
+              style={styles.input}
+              editable={!saving}
+              maxLength={50}
+            />
+          </View>
 
-          {/* Liste des exercices ajoutés */}
-          <Text style={s.label}>Exercices ({exercises.length})</Text>
+          {/* liste des exos ajoutés */}
+          <View style={styles.field}>
+            <Text style={styles.label}>Exercices ({exercises.length})</Text>
 
-          {exercises.length === 0 ? (
-            <View style={s.emptyBox}>
-              <Text style={s.emptyText}>
-                Aucun exercice pour l'instant.
-              </Text>
-            </View>
-          ) : (
-            <View style={s.exerciseListBox}>
+            {exercises.length === 0 ? (
+              <View style={styles.emptyBox}>
+                <Text style={styles.emptyText}>
+                  Aucun exercice pour l’instant.
+                </Text>
+              </View>
+            ) : (
               <FlatList
                 data={exercises}
                 keyExtractor={(item) => item.id}
                 renderItem={renderExerciseRow}
+                scrollEnabled={false}
+                contentContainerStyle={{ gap: 10 }}
               />
-            </View>
-          )}
-
-          {/* Bouton "Ajouter exercice" */}
-          <Pressable
-            style={[
-              s.addExerciseBtn,
-              (saving || fetchingExercise) && { opacity: 0.6 },
-            ]}
-            onPress={handleAddExerciseFromBackend}
-            disabled={saving || fetchingExercise}
-          >
-            <Text style={s.addExerciseIcon}>
-              {fetchingExercise ? "…" : "＋"}
-            </Text>
-            <Text style={s.addExerciseText}>
-              {fetchingExercise ? "Chargement..." : "Ajouter exercice"}
-            </Text>
-          </Pressable>
-
-          {/* Bouton créer la séance */}
-          <Pressable
-            style={[s.cta, saving && { opacity: 0.6 }]}
-            onPress={handleCreate}
-            disabled={saving}
-          >
-            {saving ? (
-              <ActivityIndicator color="#061018" />
-            ) : (
-              <Text style={s.ctaText}>CRÉER LA SÉANCE</Text>
             )}
-          </Pressable>
+          </View>
 
-          {/* Annuler */}
+          {/* bouton ouvrir la bibliothèque */}
           <Pressable
-            style={s.secondary}
-            onPress={() => router.back()}
+            style={[styles.addExerciseBtn, saving && { opacity: 0.6 }]}
+            onPress={() =>
+              router.push({
+                pathname: "/exercise",
+                params: {
+                  mode: "pick",
+                  current: JSON.stringify(exercises),
+                },
+              })
+            }
             disabled={saving}
           >
-            <Text style={s.secondaryText}>Annuler</Text>
+            <Text style={styles.addExerciseIcon}>＋</Text>
+            <Text style={styles.addExerciseText}>Ajouter un exercice</Text>
           </Pressable>
-        </View>
+        </ScrollView>
       </KeyboardAvoidingView>
+
+      {/* FOOTER CTA */}
+      <View style={[styles.footer, { bottom: tabBarHeight + 12 }]}>
+        <Pressable
+          style={[styles.primaryBtn, saving && { opacity: 0.6 }]}
+          onPress={handleCreate}
+          disabled={saving}
+        >
+          {saving ? (
+            <ActivityIndicator color="#061018" />
+          ) : (
+            <Text style={styles.primaryBtnText}>Créer la séance</Text>
+          )}
+        </Pressable>
+
+        <Pressable
+          style={styles.secondaryBtn}
+          onPress={() => router.back()}
+          disabled={saving}
+        >
+          <Text style={styles.secondaryBtnText}>Annuler</Text>
+        </Pressable>
+      </View>
     </SafeAreaView>
   );
 }
 
-const s = StyleSheet.create({
+const styles = StyleSheet.create({
+  // fond
   container: {
     flex: 1,
-    backgroundColor: "#0F1420",
-    paddingHorizontal: 16,
+    backgroundColor: "#0f0f23",
   },
-  card: {
-    flex: 1,
-    borderWidth: 1,
-    borderColor: "#232A3A",
-    backgroundColor: "#121927",
+
+  /* HEADER */
+  header: {
+    flexDirection: "row",
+    alignItems: "center",
+    paddingHorizontal: 16,
+    paddingTop: 20,
+    paddingBottom: 16,
+  },
+  backBtn: {
+    width: 34,
+    height: 34,
+    borderRadius: 12,
+    backgroundColor: "rgba(255,255,255,0.05)",
+    alignItems: "center",
+    justifyContent: "center",
+    marginRight: 12,
+  },
+  headerTitle: {
+    color: "#fff",
+    fontSize: 20,
+    fontWeight: "700",
+  },
+  headerSubtitle: {
+    color: "#8C9BAD",
+    fontSize: 12,
+    marginTop: 4,
+  },
+
+  /* bloc glass */
+  infoCard: {
+    marginHorizontal: 16,
+    marginTop: -14,
     borderRadius: 16,
-    padding: 20,
-    gap: 16,
-    shadowColor: "#000",
-    shadowOpacity: 0.25,
-    shadowRadius: 8,
-    shadowOffset: { width: 0, height: 4 },
-    elevation: 6,
+    borderWidth: 1,
+    borderColor: "rgba(122, 211, 255, 0.12)",
+    padding: 16,
+    gap: 6,
+  },
+  infoTitle: {
+    color: "#fff",
+    fontWeight: "700",
+    fontSize: 15,
+  },
+  infoText: {
+    color: "#B1B9C7",
+    fontSize: 13,
+  },
+
+  /* champs */
+  field: {
+    marginHorizontal: 16,
+    marginTop: 20,
   },
   label: {
-    fontSize: 14,
-    lineHeight: 18,
-    fontWeight: "600",
     color: "#E6F0FF",
-    marginBottom: 4,
+    fontSize: 14,
+    fontWeight: "600",
+    marginBottom: 6,
   },
   input: {
+    backgroundColor: "rgba(13,16,26,0.4)",
     borderWidth: 1,
-    borderColor: "#232A3A",
-    backgroundColor: "#0F1420",
-    color: "#E6F0FF",
-    borderRadius: 12,
+    borderColor: "rgba(124,211,255,0.05)",
+    borderRadius: 14,
     paddingHorizontal: 16,
     paddingVertical: 12,
-    fontSize: 16,
+    color: "#fff",
+    fontSize: 15,
   },
+
   emptyBox: {
-    borderWidth: 1,
-    borderColor: "#232A3A",
-    backgroundColor: "#0F1420",
-    borderRadius: 12,
+    backgroundColor: "rgba(12,17,27,0.3)",
+    borderRadius: 14,
     padding: 16,
   },
   emptyText: {
-    color: "#6B7280",
-    fontSize: 14,
-    fontWeight: "500",
+    color: "#8C9BAD",
   },
-  exerciseListBox: {
+
+  /* exo card */
+  exerciseCard: {
+    backgroundColor: "rgba(14,17,30,0.65)",
+    borderRadius: 16,
     borderWidth: 1,
-    borderColor: "#232A3A",
-    backgroundColor: "#0F1420",
-    borderRadius: 12,
-    maxHeight: 200,
-  },
-  exerciseRow: {
+    borderColor: "rgba(124,211,255,0.03)",
+    padding: 14,
     flexDirection: "row",
-    paddingHorizontal: 16,
-    paddingVertical: 12,
-    borderBottomWidth: 1,
-    borderBottomColor: "#232A3A",
+    gap: 12,
     alignItems: "center",
   },
+  exerciseIndex: {
+    width: 32,
+    height: 32,
+    borderRadius: 10,
+    backgroundColor: "rgba(138, 153, 187, 0.12)",
+    alignItems: "center",
+    justifyContent: "center",
+  },
+  exerciseIndexFirst: {
+    backgroundColor: "rgba(18, 226, 154, 0.14)",
+    borderColor: "rgba(18,226,154,0.4)",
+    borderWidth: 1,
+  },
+  exerciseIndexText: {
+    color: "#fff",
+    fontWeight: "700",
+  },
   exerciseName: {
-    color: "#E6F0FF",
+    color: "#fff",
+    fontWeight: "700",
     fontSize: 15,
-    fontWeight: "600",
+  },
+  exerciseMetaRow: {
+    flexDirection: "row",
+    gap: 6,
+    alignItems: "center",
+    marginTop: 3,
   },
   exerciseMeta: {
-    color: "#98A2B3",
-    fontSize: 13,
-    fontWeight: "500",
-    marginTop: 2,
+    color: "#B1B9C7",
+    fontSize: 12,
   },
   exerciseIdDebug: {
     color: "#475569",
     fontSize: 11,
-    marginTop: 2,
   },
   removeBtn: {
-    marginLeft: 12,
+    backgroundColor: "rgba(255,107,107,0.12)",
     paddingHorizontal: 10,
     paddingVertical: 6,
-    backgroundColor: "#2A3448",
-    borderRadius: 8,
+    borderRadius: 10,
   },
   removeBtnText: {
     color: "#FF6B6B",
     fontWeight: "600",
     fontSize: 12,
   },
+
+  /* bouton ajouter */
   addExerciseBtn: {
+    marginHorizontal: 16,
+    marginTop: 16,
     borderWidth: 1,
     borderColor: "#12E29A",
-    backgroundColor: "transparent",
-    borderRadius: 12,
-    paddingVertical: 14,
+    borderRadius: 14,
+    height: 50,
+    flexDirection: "row",
     alignItems: "center",
     justifyContent: "center",
-    flexDirection: "row",
+    gap: 6,
   },
   addExerciseIcon: {
     color: "#12E29A",
     fontWeight: "700",
-    fontSize: 16,
-    lineHeight: 16,
-    marginRight: 6,
+    fontSize: 18,
   },
   addExerciseText: {
     color: "#12E29A",
     fontWeight: "600",
     fontSize: 15,
   },
-  cta: {
+
+  /* footer */
+  footer: {
+    position: "absolute",
+    left: 16,
+    right: 16,
+    gap: 10,
+  },
+  primaryBtn: {
     backgroundColor: "#12E29A",
-    paddingVertical: 14,
-    borderRadius: 12,
+    height: 54,
+    borderRadius: 16,
     alignItems: "center",
     justifyContent: "center",
-    marginTop: 8,
   },
-  ctaText: {
+  primaryBtnText: {
     color: "#061018",
     fontWeight: "700",
     fontSize: 15,
-    lineHeight: 18,
   },
-  secondary: {
-    paddingVertical: 12,
-    borderRadius: 12,
+  secondaryBtn: {
+    backgroundColor: "transparent",
+    height: 44,
+    borderRadius: 14,
     alignItems: "center",
+    justifyContent: "center",
   },
-  secondaryText: {
-    color: "#98A2B3",
+  secondaryBtnText: {
+    color: "#8C9BAD",
     fontWeight: "600",
-    fontSize: 14,
   },
 });
