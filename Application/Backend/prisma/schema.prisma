@@ -138,6 +138,7 @@ model WorkoutSet {
   weight        Float?
   rest          Int?
   rpe           Float?
+  completed     Boolean    @default(false)
   workoutItemId String
   item          WorkoutItem @relation(fields: [workoutItemId], references: [id], onDelete: Cascade)
 

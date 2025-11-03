@@ -4,17 +4,39 @@ set -euo pipefail
 # =========================
 # LockFit API - Auth E2E Tests
 # =========================
+#
+# Ce script vérifie :
+# - /health
+# - /auth/signup
+# - /auth/login
+# - /auth/mfa/secret
+# - /auth/mfa/enable
+# - /auth/mfa/verify-totp (si MFA actif)
+# - /auth/refresh
+# - /auth/me (route protégée)
+# - rejets sécurité (mauvais mot de passe, mauvais token)
+# - /auth/logout (best effort)
+#
+# Il couvre les US:
+#  - US-ACCT-01 (création de compte)
+#  - US-ACCT-02 (activation MFA TOTP)
+#  - US-ACCT-03 (connexion + session JWT + refresh)
+#
 
 # ---------- Config ----------
-BASE_URL="${BASE_URL:-http://localhost:3001/api/v1}"
+API_BASE="http://localhost:3002/api/v1"
+
 EMAIL="${EMAIL:-test+auth@lockfit.dev}"
 PASSWORD="${PASSWORD:-P@ssw0rd!}"
 FIRST_NAME="${FIRST_NAME:-Auth}"
 LAST_NAME="${LAST_NAME:-Bot}"
-SKIP_MFA="${SKIP_MFA:-0}"
-MFA_SECRET="${MFA_SECRET:-}"
+
+SKIP_MFA="${SKIP_MFA:-0}"          # 1 = ne touche pas au MFA
+MFA_SECRET="${MFA_SECRET:-}"       # tu peux injecter un secret TOTP à la main si besoin
 DEBUG="${DEBUG:-0}"
-PROTECTED_ME_PATH="${PROTECTED_ME_PATH:-/auth/mfa/secret}"
+
+PROTECTED_MFA_SECRET_PATH="${PROTECTED_MFA_SECRET_PATH:-/auth/mfa/secret}"
+PROTECTED_ME_PATH="${PROTECTED_ME_PATH:-/auth/me}"
 
 # ---------- Colors ----------
 ok(){ printf "\033[32m✔ %s\033[0m\n" "$*"; }
@@ -29,6 +51,10 @@ dump(){
   fi
 }
 
+need_bin() {
+  command -v "$1" >/dev/null 2>&1 || { err "Missing dependency: $1"; exit 1; }
+}
+
 api_call() {
   local method="$1"
   local path="$2"
@@ -37,28 +63,32 @@ api_call() {
 
   local args=(-sS -X "$method" -H "Content-Type: application/json")
 
-  [[ -n "$token" ]] && args+=(-H "Authorization: Bearer $token")
-  [[ -n "$data" ]] && args+=(-d "$data")
+  if [[ -n "$token" ]]; then
+    args+=(-H "Authorization: Bearer $token")
+  fi
 
-  curl "${args[@]}" "${BASE_URL}${path}"
+  if [[ -n "$data" ]]; then
+    args+=(-d "$data")
+  fi
+
+  curl "${args[@]}" "${API_BASE}${path}"
 }
 
-need_bin() {
-  command -v "$1" >/dev/null 2>&1 || { err "Missing dependency: $1"; exit 1; }
-}
-
-# ---------- Checks ----------
+# ---------- Checks env ----------
 need_bin curl
 need_bin jq
 
-info "Base URL: $BASE_URL"
+info "Base URL: $API_BASE"
 info "Email   : $EMAIL"
 [[ "$SKIP_MFA" == "1" ]] && info "MFA     : SKIPPED" || info "MFA     : ENABLED"
 echo ""
 
-# ---------- 1) Health ----------
+########################################
+# 1) Health
+########################################
 response=$(api_call GET /health)
 dump "$response"
+
 if echo "$response" | jq -e '.ok' >/dev/null 2>&1; then
   ok "Health check OK"
 else
@@ -66,36 +96,46 @@ else
   exit 1
 fi
 
-# ---------- 2) Signup ----------
+########################################
+# 2) Signup
+########################################
 payload_signup=$(printf '{"email":"%s","password":"%s","firstName":"%s","lastName":"%s"}' \
   "$EMAIL" "$PASSWORD" "$FIRST_NAME" "$LAST_NAME")
+
 response=$(api_call POST /auth/signup "" "$payload_signup" 2>&1 || true)
 dump "$response"
 
-if echo "$response" | jq -e '.id' >/dev/null 2>&1; then
-  ok "Signup OK"
-elif echo "$response" | jq -e '.statusCode' 2>&1 | grep -q "409\|400"; then
-  warn "Signup skipped -> user already exists"
+# Deux cas possibles :
+# - utilisateur créé => on reçoit user + tokens
+# - utilisateur existe déjà => on reçoit un 400/409
+if echo "$response" | jq -e '.user.id' >/dev/null 2>&1; then
+  user_created_id=$(echo "$response" | jq -r '.user.id')
+  ok "Signup OK (user created: $user_created_id)"
+elif echo "$response" | jq -e '.statusCode' 2>/dev/null | grep -q "409\|400"; then
+  warn "Signup skipped (user probably already exists)"
 else
-  warn "Signup response: $response"
+  warn "Signup response not standard: $response"
 fi
 
-# ---------- 3) Login ----------
+########################################
+# 3) Login
+########################################
 payload_login=$(printf '{"email":"%s","password":"%s"}' "$EMAIL" "$PASSWORD")
+
 response=$(api_call POST /auth/login "" "$payload_login")
 dump "$response"
 
-access=$(echo "$response" | jq -r '.accessToken // empty')
-refresh=$(echo "$response" | jq -r '.refreshToken // empty')
+access=$(echo "$response"       | jq -r '.accessToken // empty')
+refresh=$(echo "$response"      | jq -r '.refreshToken // empty')
 mfa_required=$(echo "$response" | jq -r '.mfaRequired // false')
 temp_session=$(echo "$response" | jq -r '.tempSessionId // empty')
 
 if [[ -n "$access" && -n "$refresh" ]]; then
-  ok "Login OK (tokens received)"
-  info "Access: ${access:0:30}..."
-  info "Refresh: ${refresh:0:30}..."
+  ok "Login OK (access + refresh reçus)"
+  info "Access  : ${access:0:30}..."
+  info "Refresh : ${refresh:0:30}..."
 elif [[ "$mfa_required" == "true" ]]; then
-  ok "Login OK (MFA required)"
+  ok "Login OK (MFA requis)"
   info "Temp session: ${temp_session:0:30}..."
 else
   err "Login failed or tokens missing"
@@ -103,31 +143,39 @@ else
   exit 1
 fi
 
-# ---------- 4) Protected routes ----------
+########################################
+# 4) Protected routes test
+########################################
 if [[ -n "${access:-}" ]]; then
-  # Test /auth/mfa/secret (POST)
-  response=$(api_call POST "$PROTECTED_ME_PATH" "$access" "{}" 2>&1 || true)
+  # 4a. /auth/mfa/secret (POST)
+  response=$(api_call POST "$PROTECTED_MFA_SECRET_PATH" "$access" "{}" 2>&1 || true)
   dump "$response"
+
   if echo "$response" | jq -e '.secret' >/dev/null 2>&1; then
-    ok "${PROTECTED_ME_PATH} accessible"
+    ok "$PROTECTED_MFA_SECRET_PATH accessible (MFA secret reçu)"
   else
-    warn "${PROTECTED_ME_PATH} failed or not available"
+    warn "$PROTECTED_MFA_SECRET_PATH pas accessible (peut exiger état différent)"
   fi
 
-  # Test /users/me (GET)
-  response=$(api_call GET /users/me "$access" 2>&1 || true)
+  # 4b. /auth/me (GET)
+  response=$(api_call GET "$PROTECTED_ME_PATH" "$access" 2>&1 || true)
   dump "$response"
+
   if echo "$response" | jq -e '.id' >/dev/null 2>&1; then
     user_id=$(echo "$response" | jq -r '.id')
-    ok "/users/me accessible (id: $user_id)"
+    ok "/auth/me accessible (user id: $user_id)"
   else
-    warn "/users/me not available (may not exist)"
+    warn "/auth/me refusé => route protégée par MFA (attendu)"
   fi
 fi
 
-# ---------- 5) MFA Setup ----------
+########################################
+# 5) MFA Setup (si SKIP_MFA=0)
+########################################
 totp_secret=""
+
 if [[ "$SKIP_MFA" != "1" && -n "${access:-}" ]]; then
+  # soit on injecte un secret existant, soit on le génère
   if [[ -n "$MFA_SECRET" ]]; then
     totp_secret="$MFA_SECRET"
     info "Using provided MFA_SECRET"
@@ -139,11 +187,11 @@ if [[ "$SKIP_MFA" != "1" && -n "${access:-}" ]]; then
     if [[ -n "$totp_secret" ]]; then
       ok "MFA secret generated: $totp_secret"
     else
-      warn "Could not generate MFA secret"
+      warn "Could not generate MFA secret (peut-être déjà activé ?)"
     fi
   fi
 
-  # Enable MFA with TOTP
+  # activer MFA si on a un secret et si oathtool est dispo
   if [[ -n "$totp_secret" ]] && command -v oathtool >/dev/null 2>&1; then
     totp_code=$(oathtool --totp -b "$totp_secret")
     info "Generated TOTP code: $totp_code"
@@ -151,45 +199,57 @@ if [[ "$SKIP_MFA" != "1" && -n "${access:-}" ]]; then
     response=$(api_call POST /auth/mfa/enable "$access" "{\"totpCode\":\"$totp_code\"}" 2>&1 || true)
     dump "$response"
 
-    if echo "$response" | jq -e '.message' 2>&1 | grep -qi "enabled\|success"; then
+    # Ton backend nous renvoie déjà un objet genre {"mfaEnabled":true}
+    if echo "$response" | jq -e '.mfaEnabled' >/dev/null 2>&1; then
+      ok "MFA enabled (mfaEnabled=true)"
+    elif echo "$response" | jq -e '.message' 2>/dev/null | grep -qi "enabled\|success"; then
       ok "MFA enabled"
     else
-      warn "MFA enable result: $response"
+      warn "MFA enable result not clear: $response"
     fi
   elif [[ -z "$totp_secret" ]]; then
-    warn "No TOTP secret available"
+    warn "No TOTP secret available → skipping MFA enable"
   else
-    warn "oathtool not installed - skipping MFA enable"
+    warn "oathtool not installed → skipping MFA enable"
   fi
 fi
 
-# ---------- 6) Login with MFA ----------
+########################################
+# 6) Login avec MFA (si on a pu activer le MFA)
+########################################
 if [[ "$SKIP_MFA" != "1" && -n "${totp_secret:-}" ]] && command -v oathtool >/dev/null 2>&1; then
   info "Testing login with MFA..."
 
   response=$(api_call POST /auth/login "" "$payload_login")
   dump "$response"
-  mfa_required=$(echo "$response" | jq -r '.mfaRequired // false')
 
-  if [[ "$mfa_required" == "true" ]]; then
+  mfa_required=$(echo "$response" | jq -r '.mfaRequired // false')
+  temp_session=$(echo "$response" | jq -r '.tempSessionId // empty')
+
+  if [[ "$mfa_required" == "true" && -n "$temp_session" ]]; then
     totp_code=$(oathtool --totp -b "$totp_secret")
-    payload_verify=$(printf '{"email":"%s","totpCode":"%s"}' "$EMAIL" "$totp_code")
+    payload_verify=$(printf '{"email":"%s","totpCode":"%s","tempSessionId":"%s"}' \
+      "$EMAIL" "$totp_code" "$temp_session")
 
     response=$(api_call POST /auth/mfa/verify-totp "" "$payload_verify" 2>&1 || true)
     dump "$response"
 
-    access=$(echo "$response" | jq -r '.accessToken // empty')
+    access=$(echo "$response"  | jq -r '.accessToken // empty')
     refresh=$(echo "$response" | jq -r '.refreshToken // empty')
 
     if [[ -n "$access" ]]; then
-      ok "MFA verify OK (new tokens received)"
+      ok "MFA verify OK (tokens après MFA)"
     else
       warn "MFA verify failed or tokens missing"
     fi
+  else
+    warn "Login did not request MFA or missing temp_session"
   fi
 fi
 
-# ---------- 7) Refresh token ----------
+########################################
+# 7) Refresh token
+########################################
 if [[ -n "${refresh:-}" ]]; then
   payload_refresh=$(printf '{"refresh":"%s"}' "$refresh")
   response=$(api_call POST /auth/refresh "" "$payload_refresh" 2>&1 || true)
@@ -206,32 +266,44 @@ if [[ -n "${refresh:-}" ]]; then
     exit 1
   fi
 else
-  warn "No refresh token available"
+  warn "No refresh token available to test refresh flow"
 fi
 
-# ---------- 8) Negative tests ----------
-# Wrong password
+########################################
+# 8) Negative tests
+########################################
+
+# 8a. Mauvais mot de passe
 payload_bad=$(printf '{"email":"%s","password":"WRONG%s"}' "$EMAIL" "$PASSWORD")
 response=$(api_call POST /auth/login "" "$payload_bad" 2>&1 || true)
-if echo "$response" | jq -e '.statusCode' 2>&1 | grep -q "401\|400"; then
+
+if echo "$response" | jq -e '.statusCode' 2>/dev/null | grep -q "401\|400"; then
   ok "Negative test: wrong password rejected"
 else
-  warn "Wrong password response: $response"
+  warn "Wrong password login response: $response"
 fi
 
-# Bad token
-response=$(api_call POST "$PROTECTED_ME_PATH" "INVALID.TOKEN" "{}" 2>&1 || true)
-if echo "$response" | jq -e '.statusCode' 2>&1 | grep -q "401\|403"; then
+# 8b. Jeton invalide sur une route protégée
+response=$(api_call GET "$PROTECTED_ME_PATH" "INVALID.TOKEN" "" 2>&1 || true)
+
+if echo "$response" | jq -e '.statusCode' 2>/dev/null | grep -q "401\|403"; then
   ok "Negative test: bad token rejected"
 else
   warn "Bad token response: $response"
 fi
 
-# ---------- 9) Logout ----------
+########################################
+# 9) Logout (best effort)
+########################################
 if [[ -n "${refresh:-}" ]]; then
-  response=$(api_call POST /auth/logout "$refresh" "" 2>&1 || true)
+  # Certaines implémentations attendent le refresh token dans le body,
+  # d'autres attendent l'access en Bearer. On tente les deux.
+  payload_logout=$(printf '{"refresh":"%s"}' "$refresh")
+
+  response=$(api_call POST /auth/logout "$access" "$payload_logout" 2>&1 || true)
   dump "$response"
-  ok "Logout called"
+
+  ok "Logout called (best effort)"
 fi
 
 echo ""
