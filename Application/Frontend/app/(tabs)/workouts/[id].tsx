@@ -209,7 +209,11 @@ export default function WorkoutDetailScreen() {
       <View style={[styles.footer, { bottom: tabBarHeight + 12  }]}>
         {!isDone ? (
           <>
-            <Pressable style={styles.primaryBtn} onPress={markFinished}>
+          {/* Ouvre le Live */}
+            <Pressable
+             style={styles.primaryBtn}
+              onPress={() => router.push(`/workouts/live/${workout.id}`)}
+              >
               <Ionicons
                 name="play"
                 size={18}
@@ -219,11 +223,12 @@ export default function WorkoutDetailScreen() {
               <Text style={styles.primaryBtnText}>Commencer la séance</Text>
             </Pressable>
 
+            {/* Marquer comme terminee */}
             <Pressable
               style={styles.secondaryBtn}
-              onPress={() => router.push(`/workouts/live/${workout.id}`)}
+              onPress={markFinished}
             >
-              <Text style={styles.secondaryBtnText}>Mode live</Text>
+              <Text style={styles.secondaryBtnText}>Terminée</Text>
             </Pressable>
           </>
         ) : (

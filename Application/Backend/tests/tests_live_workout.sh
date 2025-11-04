@@ -1,58 +1,85 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
-# ============================
+# =========================================
 # 🔧 Config
-# ============================
-BASE_URL=${BASE_URL:-"http://localhost:3002/api/v1"}
+# =========================================
+# Tu peux passer BASE_URL avec OU sans /api/v1. On normalise plus bas.
+BASE_URL_RAW=${BASE_URL:-"http://localhost:3002"}
 JQ=${JQ:-jq}
+AUTH=${AUTH:-}   # ex: "Bearer eyJhbGciOi..."
 
-echo "ℹ️  Base URL: $BASE_URL"
 command -v "$JQ" >/dev/null || { echo "❌ jq introuvable"; exit 1; }
 
-# Helpers ---------------
+# ——— Normalisation de l’URL ———
+# Trim espaces
+BASE_TRIM=$(printf "%s" "$BASE_URL_RAW" | sed -E 's/^[[:space:]]+|[[:space:]]+$//g')
+# Retire / final(s)
+BASE_NOSLASH=$(printf "%s" "$BASE_TRIM" | sed -E 's:/+$::')
+# Si déjà /api/v1 à la fin → OK, sinon on l’ajoute
+if [[ "$BASE_NOSLASH" =~ /api/v1$ ]]; then
+  API_BASE="$BASE_NOSLASH"
+else
+  API_BASE="$BASE_NOSLASH/api/v1"
+fi
 
+echo "ℹ️  API base: $API_BASE"
+[[ -n "$AUTH" ]] && echo "🔐  Auth: (Authorization header fourni)" || echo "🔓  Auth: non"
+
+# =========================================
+# 🧰 Helpers
+# =========================================
 fail() { echo "❌ $*" >&2; exit 1; }
 ok()   { echo "✅ $*"; }
 info() { echo; echo "==> $*"; }
 
 curl_json() {
-  # $1: method, $2: path, $3?: data
+  # $1: method, $2: path (commence par /), $3?: data (JSON)
   local method="$1"; shift
   local path="$1"; shift
   local data="${1:-}"
-  local url="$BASE_URL$path"
+  local p
+  # Assure un seul slash entre base et path
+  if [[ "$path" == /* ]]; then p="$path"; else p="/$path"; fi
+  local url="${API_BASE}${p}"
+
+  local authHeader=()
+  [[ -n "$AUTH" ]] && authHeader=(-H "Authorization: $AUTH")
 
   if [[ -n "$data" ]]; then
-    curl -s -S -X "$method" "$url" -H "Content-Type: application/json" -d "$data"
+    curl -s -S -X "$method" "$url" \
+      -H "Accept: application/json" -H "Content-Type: application/json" \
+      "${authHeader[@]}" \
+      -d "$data"
   else
-    curl -s -S -X "$method" "$url"
+    curl -s -S -X "$method" "$url" \
+      -H "Accept: application/json" \
+      "${authHeader[@]}"
   fi
 }
 
 assert_jq() {
-  # $1: json, $2: jq filter (boolean expression), $3: message if fail
+  # $1: json, $2: jq filter (bool), $3: message si échec
   local json="$1"; shift
   local filter="$1"; shift
   local msg="$1"
-  local res
-  res=$(echo "$json" | $JQ -e "$filter" >/dev/null 2>&1 && echo "true" || echo "false")
-  [[ "$res" == "true" ]] || fail "$msg. Réponse: $(echo "$json" | $JQ '.')"
+  if ! echo "$json" | $JQ -e "$filter" >/dev/null 2>&1; then
+    echo "— Réponse (pretty):"
+    echo "$json" | $JQ '.'
+    fail "$msg"
+  fi
 }
 
-get_field() {
-  # $1: json, $2: jq path
-  echo "$1" | $JQ -r "$2"
-}
+get_field() { echo "$1" | $JQ -r "$2"; }
 
-# ============================
+# =========================================
 # 🧪 Tests
-# ============================
+# =========================================
 
 # 0) Health
 info "Health"
-health=$(curl -si "$BASE_URL/health")
-echo "$health" | grep -q "200 OK" || fail "Health ne répond pas 200"
+health_headers=$(curl -si "${API_BASE}/health")
+echo "$health_headers" | grep -q "200 OK" || fail "Health ne répond pas 200"
 ok "Health 200 OK"
 
 # 1) Exercises disponibles (GET /exercises renvoie un tableau)
@@ -117,16 +144,15 @@ ok "Idempotence OK (2)"
 
 # 8) Live: garde-fous — mauvais workout → 400
 info "Live: garde-fous (mauvais workout → 400)"
-# on crée un autre workout pour avoir un autre id
 create_other=$(curl_json POST "/workouts" '{"title":"Autre","items":[{"order":1,"exerciseId":"'$EXO_ID'","sets":[{"reps":1}]}] }')
 WK_OTHER_ID=$(get_field "$create_other" '.id')
-bad_req=$(curl -s -o /tmp/live_bad.json -w "%{http_code}" -X PATCH "$BASE_URL/workouts/$WK_OTHER_ID/sets/$SET_ID/complete" -H "Content-Type: application/json")
+bad_req=$(curl -s -o /tmp/live_bad.json -w "%{http_code}" -X PATCH "${API_BASE}/workouts/$WK_OTHER_ID/sets/$SET_ID/complete" -H "Content-Type: application/json" ${AUTH:+-H "Authorization: $AUTH"} )
 [[ "$bad_req" == "400" ]] || fail "Attendu 400 pour set non lié (reçu $bad_req). Réponse: $(cat /tmp/live_bad.json)"
 ok "Garde-fous 400 OK"
 
 # 9) Live: set inexistant → 404
 info "Live: set inexistant → 404"
-notfound=$(curl -s -o /tmp/live_nf.json -w "%{http_code}" -X PATCH "$BASE_URL/workouts/$WK_LIVE_ID/sets/___BAD___/complete" -H "Content-Type: application/json")
+notfound=$(curl -s -o /tmp/live_nf.json -w "%{http_code}" -X PATCH "${API_BASE}/workouts/$WK_LIVE_ID/sets/___BAD___/complete" -H "Content-Type: application/json" ${AUTH:+-H "Authorization: $AUTH"} )
 [[ "$notfound" == "404" ]] || fail "Attendu 404 pour set inexistant (reçu $notfound). Réponse: $(cat /tmp/live_nf.json)"
 ok "404 Not Found OK"
 
@@ -151,7 +177,7 @@ upd=$(curl_json PATCH "/workouts/$WK_LIVE_ID" '{"title":"Séance live renommée"
 assert_jq "$upd" '.title=="Séance live renommée"' "Update title non pris en compte"
 ok "Update partiel OK"
 
-# 13) Finish & Delete des deux workouts crées
+# 13) Finish & Delete des deux workouts créés
 info "Finish & Delete"
 _=$(curl_json POST "/workouts/$WK_LIVE_ID/finish" | $JQ -e '.finishedAt != null') || fail "finish live KO"
 del1=$(curl_json DELETE "/workouts/$WK_LIVE_ID")

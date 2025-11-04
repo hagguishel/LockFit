@@ -1,14 +1,27 @@
 // src/types/workout.ts
 export type WorkoutSet = {
+  id? : string;
   reps: number;
-  weight?: number;
-  rest?: number;
-  done?: boolean;
+  weight?: number | null;
+  rest?: number | null;
+  rpe?: number | null;
+  completed?: boolean;
+  workoutItemId?: string;
 };
 
 export type WorkoutItem = {
-  exerciseId: string;
+  id?: string;
   order: number;
+  workoutId?: string;
+  exerciseId: string;
+  exercise?: {
+    id: string;
+    name: string;
+    primaryMuscle?: string | null;
+    secondaryMuscle?: string | null;
+    equipment?: string | null;
+    level?: string |null;
+  };
   sets: WorkoutSet[];
 };
 
@@ -19,7 +32,7 @@ export type Workout = {
   finishedAt?: string | null;
   createdAt: string;
   updatedAt: string;
-  items?: WorkoutItem[];
+  items: WorkoutItem[];
 };
 
 export type Paginated<T> = {
