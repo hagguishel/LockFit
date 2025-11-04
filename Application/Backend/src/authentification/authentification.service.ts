@@ -522,7 +522,9 @@ export class AuthService {
     // NEW: on essaie d'abord d'utiliser l'URL du front
     const baseUrl = process.env.APP_BASE_URL || `http://localhost:${process.env.PORT || 3001}`;
 
-    const resetUrl = `${baseUrl}/reset-password?token=${token}`;
+    const resetUrl =
+      process.env.PASSWORD_RESET_URL
+        || `${baseUrl}/api/v1/auth/password/reset?token=${token}`;
 
     // Envoi d’email (si SendGrid configuré)
     if (typeof (this.mail as any).sendPasswordReset === 'function') {

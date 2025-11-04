@@ -1,4 +1,4 @@
-// Fichier : src/authentification/authentification.controller.ts
+// src/authentification/authentification.controller.ts
 // Expose les routes HTTP d'authentification : signup, login, MFA, vérif email, reset password.
 
 import {
@@ -18,7 +18,7 @@ import { IsEmail, IsNotEmpty, MinLength, IsString } from 'class-validator';
 
 import { AuthService } from './authentification.service';
 
-// ---------- DTOs (validation des payloads) ----------
+// ---------- DTOs (validation) ----------
 
 // Inscription
 class SignupDto {
@@ -72,7 +72,7 @@ class RefreshDto {
   refresh!: string;
 }
 
-// Password reset
+// Password reset (version JSON)
 class PasswordResetRequestDto {
   @IsEmail()
   email!: string;
@@ -155,7 +155,6 @@ export class AuthController {
   @HttpCode(200)
   async logout(@Req() req: Request) {
     const authz = (req.headers['authorization'] as string) || '';
-    // on ne connaît pas forcément le userId ici, le service gère le cas
     return this.authService.logout('', authz);
   }
 
@@ -196,17 +195,20 @@ export class AuthController {
     return this.authService.requestPasswordReset(dto.email);
   }
 
-  // 2) Confirmation du reset (appelée par le front ou la petite page HTML)
+  // 2) Confirmation du reset
+  // On accepte JSON (mobile) ET form-url-encoded (notre page HTML)
   @Post('password/reset/confirm')
-  async confirmPasswordReset(@Body() dto: PasswordResetConfirmDto) {
-    return this.authService.confirmPasswordReset(dto.token, dto.newPassword);
+  async confirmPasswordReset(@Body() body: any) {
+    const token = body.token;
+    const newPassword = body.newPassword;
+    return this.authService.confirmPasswordReset(token, newPassword);
   }
 
   // --------------------------------------------------
-  // 🖥️ Page HTML de reset (lien dans l’email)
-  // GET /api/v1/auth/reset-password?token=...
+  // 🖥️ Page HTML de reset
+  // GET /api/v1/auth/password/reset?token=...
   // --------------------------------------------------
-  @Get('reset-password')
+  @Get('password/reset')
   async resetPasswordPage(@Query('token') token: string, @Res() res: Response) {
     if (!token) {
       return res
@@ -219,7 +221,7 @@ export class AuthController {
       <html lang="fr">
       <head>
         <meta charset="utf-8" />
-        <title>LockFit – Nouveau mot de passe</title>
+        <title>LockFit – Réinitialiser le mot de passe</title>
         <meta name="viewport" content="width=device-width,initial-scale=1" />
         <style>
           body { font-family: system-ui, -apple-system, sans-serif; background:#0b0b1a; color:#fff; display:flex; align-items:center; justify-content:center; min-height:100vh; padding:16px; }
@@ -240,7 +242,7 @@ export class AuthController {
             <label for="pw">Nouveau mot de passe</label>
             <input id="pw" name="newPassword" type="password" required minlength="8" placeholder="********" />
             <button type="submit">Mettre à jour</button>
-            <p class="muted">Ce lien peut expirer. Si c'est le cas, recommence depuis l’application.</p>
+            <p class="muted">Si ce lien a expiré, recommence depuis l’application.</p>
           </form>
         </div>
       </body>
