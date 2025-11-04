@@ -8,18 +8,42 @@ import {
   ScrollView,
   Image,
 } from "react-native";
+import { useState, useEffect } from "react";
 import { router } from "expo-router";
-import { httpPost } from "../../../src/api/http";
+import { httpPost, httpGet } from "../../../src/api/http";
 import { loadTokens, clearTokens } from "../../../src/lib/tokenStorage";
-import { useState } from "react";
 
 export default function ProfileScreen() {
   const [loadingLogout, setLoadingLogout] = useState(false);
   const [loadingMfa, setLoadingMfa] = useState(false);
+  const [mfaEnabled, setMfaEnabled] = useState(false);
 
-  // -------------------------
+  // ============================
+  // Charger /auth/me au montage
+  // ============================
+  useEffect(() => {
+    (async () => {
+      try {
+        const tokens = await loadTokens();
+        if (!tokens?.access) return;
+
+        // on caste en any pour éviter l'erreur TS "mfaEnabled n'existe pas"
+        const me = (await httpGet("/auth/me", {
+          token: tokens.access,
+        })) as any;
+
+        if (me && typeof me.mfaEnabled === "boolean") {
+          setMfaEnabled(me.mfaEnabled);
+        }
+      } catch (err) {
+        console.log("Erreur /auth/me", err);
+      }
+    })();
+  }, []);
+
+  // ============================
   // Déconnexion
-  // -------------------------
+  // ============================
   async function handleLogout() {
     if (loadingLogout) return;
     setLoadingLogout(true);
@@ -27,19 +51,15 @@ export default function ProfileScreen() {
     try {
       const tokens = await loadTokens();
 
-      // Appel API pour invalider le refresh token
       if (tokens?.refresh) {
         await httpPost<void>("/auth/logout", undefined, {
           token: tokens.refresh,
         });
       }
 
-      // On efface les tokens côté app
       await clearTokens();
-
-      // Redirection vers l'écran de login
       router.replace("/auth/login");
-    } catch (e: any) {
+    } catch (e) {
       await clearTokens();
       Alert.alert("Déconnexion");
       router.replace("/auth/login");
@@ -48,10 +68,10 @@ export default function ProfileScreen() {
     }
   }
 
-  // -------------------------
-  // Activer MFA (Challenge)
-  // -------------------------
-  async function handleEnableMfa() {
+  // ============================
+  // Activer / désactiver MFA
+  // ============================
+  async function handleToggleMfa() {
     if (loadingMfa) return;
     setLoadingMfa(true);
 
@@ -62,25 +82,45 @@ export default function ProfileScreen() {
         return;
       }
 
-      await httpPost("/auth/mfa/enable", undefined, {
-        token: tokens.access, // JWT Access Token
-      });
+      if (!mfaEnabled) {
+        // ACTIVER
+        const res = (await httpPost("/auth/mfa/enable", undefined, {
+          token: tokens.access,
+        })) as any;
 
-      Alert.alert(
-        "MFA activée",
-        "L’authentification à deux facteurs est maintenant activée sur ton compte."
-      );
+        if (res?.mfaEnabled === true) {
+          setMfaEnabled(true);
+          Alert.alert("Succès", "MFA activée !");
+        } else {
+          // même si le backend ne renvoie rien
+          setMfaEnabled(true);
+          Alert.alert("Succès", "MFA activée !");
+        }
+      } else {
+        // DÉSACTIVER
+        const res = (await httpPost("/auth/mfa/disable", undefined, {
+          token: tokens.access,
+        })) as any;
+
+        if (res?.mfaEnabled === false) {
+          setMfaEnabled(false);
+          Alert.alert("Info", "MFA désactivée.");
+        } else {
+          setMfaEnabled(false);
+          Alert.alert("Info", "MFA désactivée.");
+        }
+      }
     } catch (e) {
       console.error(e);
-      Alert.alert("Erreur", "Impossible d’activer la MFA pour le moment.");
+      Alert.alert("Erreur", "Impossible de modifier la MFA pour le moment.");
     } finally {
       setLoadingMfa(false);
     }
   }
 
-  // -------------------------
+  // ============================
   // UI
-  // -------------------------
+  // ============================
   return (
     <SafeAreaView style={{ flex: 1, backgroundColor: "#0F1420" }}>
       <ScrollView
@@ -90,7 +130,6 @@ export default function ProfileScreen() {
           alignItems: "center",
         }}
       >
-        {/* Header */}
         <Text
           style={{
             color: "#fff",
@@ -102,7 +141,6 @@ export default function ProfileScreen() {
           Mon profil
         </Text>
 
-        {/* Carte profil */}
         <View
           style={{
             width: "100%",
@@ -126,14 +164,11 @@ export default function ProfileScreen() {
             }}
           >
             <Image
-              source={{
-                uri: "https://i.pravatar.cc/150?img=12",
-              }}
+              source={{ uri: "https://i.pravatar.cc/150?img=12" }}
               style={{ width: "100%", height: "100%" }}
             />
           </View>
 
-          {/* Nom utilisateur */}
           <Text style={{ color: "#fff", fontSize: 18, fontWeight: "700" }}>
             @FitnessMax
           </Text>
@@ -164,72 +199,27 @@ export default function ProfileScreen() {
               <Text style={{ color: "#fff", fontSize: 12 }}>Followers</Text>
             </View>
             <View style={{ alignItems: "center" }}>
-              <Text
-                style={{ color: "#fff", fontSize: 18, fontWeight: "700" }}
-              >
+              <Text style={{ color: "#fff", fontSize: 18, fontWeight: "700" }}>
                 0
               </Text>
               <Text style={{ color: "#fff", fontSize: 12 }}>Trophées</Text>
             </View>
             <View style={{ alignItems: "center" }}>
-              <Text
-                style={{ color: "#fff", fontSize: 18, fontWeight: "700" }}
-              >
+              <Text style={{ color: "#fff", fontSize: 18, fontWeight: "700" }}>
                 0
               </Text>
               <Text style={{ color: "#fff", fontSize: 12 }}>Entraînements</Text>
             </View>
           </View>
 
-          {/* Boutons de section (fake) */}
-          <View
-            style={{
-              flexDirection: "row",
-              backgroundColor: "#0B0F1C",
-              borderRadius: 999,
-              padding: 4,
-              gap: 4,
-              marginBottom: 16,
-            }}
-          >
-            <View
-              style={{
-                backgroundColor: "#12E29A",
-                borderRadius: 999,
-                paddingVertical: 6,
-                paddingHorizontal: 20,
-              }}
-            >
-              <Text style={{ color: "#061018", fontWeight: "700" }}>Posts</Text>
-            </View>
-            <View
-              style={{
-                borderRadius: 999,
-                paddingVertical: 6,
-                paddingHorizontal: 20,
-              }}
-            >
-              <Text style={{ color: "#fff" }}>Stats</Text>
-            </View>
-            <View
-              style={{
-                borderRadius: 999,
-                paddingVertical: 6,
-                paddingHorizontal: 20,
-              }}
-            >
-              <Text style={{ color: "#fff" }}>Trophées</Text>
-            </View>
-          </View>
-
-          {/* Paramètres sécurité */}
+          {/* Bloc actions */}
           <View style={{ width: "100%", gap: 10 }}>
-            {/* Activer MFA */}
+            {/* Toggle MFA */}
             <Pressable
-              onPress={handleEnableMfa}
+              onPress={handleToggleMfa}
               disabled={loadingMfa}
               style={({ pressed }) => ({
-                backgroundColor: "#0F1929",
+                backgroundColor: mfaEnabled ? "#12E29A" : "#0F1929",
                 borderWidth: 1,
                 borderColor: "#12E29A",
                 borderRadius: 14,
@@ -239,10 +229,15 @@ export default function ProfileScreen() {
               })}
             >
               {loadingMfa ? (
-                <ActivityIndicator color="#12E29A" />
+                <ActivityIndicator color={mfaEnabled ? "#061018" : "#12E29A"} />
               ) : (
-                <Text style={{ color: "#12E29A", fontWeight: "700" }}>
-                  Activer MFA
+                <Text
+                  style={{
+                    color: mfaEnabled ? "#061018" : "#12E29A",
+                    fontWeight: "700",
+                  }}
+                >
+                  {mfaEnabled ? "Désactiver MFA" : "Activer MFA"}
                 </Text>
               )}
             </Pressable>

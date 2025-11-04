@@ -124,13 +124,22 @@ export class AuthController {
     return this.authService.mfaCreateSecret(userId);
   }
 
-  // Activer TOTP (protégé)
+  // Challenge 
   @Post('mfa/enable')
   @UseGuards(AuthGuard('jwt'))
-  async mfaEnable(@Req() req: Request, @Body() body: MfaCodeDto) {
-    const userId = (req.user as any).sub;
-    return this.authService.mfaEnable(userId, body.totpCode);
-  }
+  async mfaEnable(@Req() req: Request) {
+  const userId = (req.user as any).sub;
+    return this.authService.mfaEnableChallenge(userId);
+}
+
+  @Post('mfa/disable')
+  @UseGuards(AuthGuard('jwt'))
+  async mfaDisable(@Req() req: Request) {
+  const userId = (req.user as any).sub;
+    return this.authService.mfaDisableChallenge(userId);
+}
+
+
 
   // Vérifier un TOTP pendant le login
   @Post('mfa/verify-totp')

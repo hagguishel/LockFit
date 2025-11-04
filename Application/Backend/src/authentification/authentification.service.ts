@@ -465,6 +465,35 @@ export class AuthService {
     return { message: 'Email de vérification envoyé (si possible).', expiresAt };
   }
 
+  // ------------------------------------------------------------
+// ✅ Active le MFA Challenge simple (pas Google Authenticator)
+// ------------------------------------------------------------
+async mfaEnableChallenge(userId: string) {
+  const user = await this.prisma.utilisateur.findUnique({ where: { id: userId } });
+  if (!user) throw new BadRequestException("Utilisateur introuvable");
+
+  const updated = await this.prisma.utilisateur.update({
+    where: { id: userId },
+    data: { mfaEnabled: true },
+  });
+
+  return { message: "MFA activée", mfaEnabled: updated.mfaEnabled };
+}
+
+async mfaDisableChallenge(userId: string) {
+  const user = await this.prisma.utilisateur.findUnique({ where: { id: userId } });
+  if (!user) throw new BadRequestException("Utilisateur introuvable");
+
+  const updated = await this.prisma.utilisateur.update({
+    where: { id: userId },
+    data: { mfaEnabled: false },
+  });
+
+  return { message: "MFA désactivée", mfaEnabled: updated.mfaEnabled };
+}
+
+
+
   /** Valide le token et marque l’email comme vérifié. */
   async verifyEmailToken(token: string) {
     if (!token) throw new BadRequestException('Token requis');
