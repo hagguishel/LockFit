@@ -71,6 +71,14 @@ export async function deleteWorkout(id: string) {
   });
 }
 
+/** Marquer une serie comme termine */
+export async function completeSet(workoutId :string, setId: string) {
+  return http<WorkoutSet>(`/workouts/${workoutId}/sets/${setId}/complete`, {
+    method: "PATCH",
+    body: {},
+  });
+}
+
 /** Marquer comme terminée (POST /workouts/:id/finish) */
 export async function finishWorkout(id: string) {
   return http<Workout>(`/workouts/${id}/finish`, { method: "POST" });
@@ -96,7 +104,7 @@ export async function addWorkoutItem(workoutId :string, input: NewWorkoutItemInp
   const newItem: WorkoutItem = {
     exerciseId: input.exerciseId,
     order: nextOrder,
-    sets: [{ reps: input.reps, weight: input.weight, rest: input.rest } satisfies WorkoutSet],
+    sets: [{ reps: input.reps, weight: input.weight, rest: input.rest } as WorkoutSet],
   };
   //3) constuire le nouveau tableau items
   const items = [...(w?.items ?? []), newItem];

@@ -101,3 +101,16 @@ export async function addWorkoutItem(workoutId: string, input: NewWorkoutItemInp
   await updateWorkout(workoutId, { items });
   return getWorkout(workoutId);
 }
+
+export async function completeSet(workoutId: string, setId: string) {
+  const url = `/workout/${workoutId}/sets/${setId}/complete`;
+  console.log(`[completeSet] PATCH ${url}`);
+  try {
+    const res = await http<WorkoutSet>(url, { method: "PATCH" });
+    console.log("[completeSet] OK:", res);
+    return res;
+  } catch (e: any) {
+    console.error("[completeSet ERREUR]", e?.message || e);
+    throw e;
+  }
+}

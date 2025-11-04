@@ -106,8 +106,6 @@ export async function http<T = unknown>(
   path: string,
   opts: HttpOptions = {}
 ): Promise<T | null> {
-  const url = buildUrl(path);
-
   const {
     method = "GET",
     body,
@@ -117,6 +115,10 @@ export async function http<T = unknown>(
     token = null,
     _retry = false,
   } = opts;
+
+  const url = buildUrl(path)
+
+  console.log(`🌐 HTTP ${method} ${url}`);
 
   const headers: Record<string, string> = {
     "Content-Type": "application/json",

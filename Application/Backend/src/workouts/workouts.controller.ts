@@ -29,10 +29,12 @@ export class WorkoutsController {                                // Contrôleur 
   }
 
   @Patch(':id/sets/:setId/complete')
+  @HttpCode(HttpStatus.OK)
   completeSet(
     @Param('id') workoutId: string,
     @Param('setId') setId: string,
   ) {
+    console.log('🛠️ PATCH /workouts/%s/sets/%s/complete', workoutId, setId);
     return this.service.completeSet(workoutId, setId);
   }
   // DELETE /api/v1/workouts/:id — supprime une séance

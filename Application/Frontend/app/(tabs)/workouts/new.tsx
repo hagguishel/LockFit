@@ -22,7 +22,15 @@ import { Ionicons } from "@expo/vector-icons";
 import { createWorkout } from "@/lib/workouts";
 import {  type ExerciseDef } from "@/lib/exercises";
 
-// Représente un exercice ajouté au brouillon
+type DraftExercice = ExerciseDef & {
+  nbSeries: number;
+  repsCibles: number;
+  poidsCibles:number;
+};
+
+const clamp = (v: number, min: number, max: number) => Math.max(min, Math.min(max, v));
+
+
 
 export default function NewWorkoutScreen() {
   const router = useRouter();
@@ -37,7 +45,7 @@ export default function NewWorkoutScreen() {
   }>();
 
   const [title, setTitle] = React.useState("");
-  const [exercises, setExercises] = React.useState<ExerciseDef[]>([]);
+  const [exercises, setExercises] = React.useState<DraftExercice[]>([]);
   const [saving, setSaving] = React.useState(false);
 
   // quand on revient de la lib d'exos avec un choix
@@ -46,7 +54,13 @@ export default function NewWorkoutScreen() {
     if (params.current) {
       try {
         const parsed = JSON.parse(params.current as string) as ExerciseDef[];
-        setExercises(parsed);
+        const withDefault: DraftExercice[] = parsed.map((e) => ({
+          ...e,
+          nbSeries: 4,
+          repsCibles: 10,
+          poidsCibles: 0,
+        }));
+        setExercises(withDefault);
       } catch (e) {
         console.log("[new] JSON current invalide", e);
       }
@@ -61,12 +75,15 @@ export default function NewWorkoutScreen() {
       .replace(/\s+/g, "-")
       .replace(/[^a-z0-9-]/g, "") ?? "";
 
-      const newExercise: ExerciseDef = {
+      const newExercise: DraftExercice = {
 
         id: params.pickedId,
         name: params.pickedName,
         slug,
         primaryMuscle: params.pickedPrimaryMuscle ?? "",
+        nbSeries: 4,
+        repsCibles: 10,
+        poidsCibles: 0,
       };
       setExercises((curr) => [...curr, newExercise]);
     }
@@ -102,7 +119,10 @@ export default function NewWorkoutScreen() {
         items: exercises.map((ex, index) => ({
           order: index + 1,
           exerciseId: ex.id,
-          sets: []
+          sets: Array.from({ length: ex.nbSeries }).map(() => ({
+            reps: ex.repsCibles,
+            weight: ex.poidsCibles,
+          })),
         })),
       };
 
@@ -126,14 +146,74 @@ export default function NewWorkoutScreen() {
     }
   }
 
+  function Stepper({
+  value,
+  onInc,
+  onDec,
+  disabled,
+} : {
+  value: string | number;
+  onInc: () => void;
+  onDec: () => void;
+  disabled?: boolean;
+}) {
+  return (
+    <View style={styles.stepper}>
+      <Pressable disabled={disabled} onPress={onDec} style={styles.stepBtn}>
+        <Ionicons name="remove" size={16} color="#7AD3FF" />
+      </Pressable>
+      <Text style={styles.stepVal}>{value}</Text>
+      <Pressable disabled={disabled} onPress={onInc} style={styles.stepBtn}>
+        <Ionicons name="add" size={16} color="#7AD3FF" />
+      </Pressable>
+    </View>
+  )
+}
   // rendu d'un exo dans le brouillon
   function renderExerciseRow({
      item,
     index,
   }: {
-    item: ExerciseDef;
+    item: DraftExercice;
     index: number;
   }) {
+    const onIncSeries = () =>
+      setExercises((list) =>
+        list.map((ex) =>
+          ex.id === item.id ? { ...ex, nbSeries: clamp(ex.nbSeries + 1, 1, 20 ) } : ex
+        )
+      );
+    const onDecSeries = () =>
+      setExercises((list) =>
+        list.map((ex) =>
+          ex.id === item.id ? { ...ex, nbSeries: clamp(ex.nbSeries - 1, 1, 20 ) } : ex
+        )
+      );
+    const onIncReps = () =>
+      setExercises((list) =>
+        list.map((ex) =>
+          ex.id === item.id ? { ...ex, repsCibles: clamp(ex.repsCibles + 1, 1, 50 ) } : ex
+        )
+      );
+    const onDecReps = () =>
+      setExercises((list) =>
+        list.map((ex) =>
+          ex.id === item.id ? { ...ex, repsCibles: clamp(ex.repsCibles - 1, 1, 50 ) } : ex
+        )
+      );
+    const onIncKg = () =>
+      setExercises((list) =>
+        list.map((ex) =>
+        ex.id === item.id ? { ...ex, poidsCibles: clamp(ex.poidsCibles + 2.5, 0, 999 ) } : ex
+        )
+      );
+    const onDecKg = () =>
+      setExercises((list) =>
+        list.map((ex) =>
+        ex.id === item.id ? { ...ex, poidsCibles: clamp(ex.poidsCibles - 2.5, 0, 999 ) } :ex
+        )
+      );
+
     return (
       <View style={styles.exerciseCard}>
         <View
@@ -155,6 +235,26 @@ export default function NewWorkoutScreen() {
             </Text>
           </View>
 
+          {/* Serie/rep/kg */}
+          <View style={styles.configRow}>
+            <View style={styles.configBlock}>
+              <Text style={styles.configLabel}>Série</Text>
+              <Stepper value={item.nbSeries} onInc={onIncSeries} onDec={onDecSeries} />
+            </View>
+
+            <View style={styles.configBlock}>
+              <Text style={styles.configLabel}>Reps</Text>
+              <Stepper value={item.repsCibles} onInc={onIncReps} onDec={onDecReps} />
+            </View>
+
+            <View style={styles.configBlock}>
+              <Text style={styles.configLabel}>Kg</Text>
+              <Stepper
+              value={item.poidsCibles.toFixed(1)}
+              onInc={onIncKg}
+              onDec={onDecKg} />
+            </View>
+          </View>
           <Pressable
           style={styles.removeBtn}
           onPress={() => handleRemoveExercise(item.id)}
@@ -481,5 +581,36 @@ const styles = StyleSheet.create({
   secondaryBtnText: {
     color: "#8C9BAD",
     fontWeight: "600",
+  },
+  stepper: {
+    flexDirection: "row",
+    alignItems: "center",
+    backgroundColor: "rgba(12,18,28,0.6)",
+    borderWidth: 1,
+    borderColor: "rgba(124,211,255,0.1)",
+    borderRadius: 999,
+    height: 36,
+    paddingHorizontal: 8,
+    gap: 10,
+    alignSelf: "flex-start",
+  },
+  stepBtn: { padding: 4 },
+  stepVal: { color: "#FFFFFF", fontWeight: "700", minWidth: 28, textAlign: "center"},
+
+  configRow: {
+    flexDirection: "row",
+    gap: 12,
+    marginTop: 10,
+    marginBottom: 8,
+    flexWrap: "wrap",
+  },
+
+  configBlock: {
+    gap: 6,
+  },
+  configLabel: {
+    color: "#8C9BAD",
+    fontSize: 11,
+    fontWeight: "700",
   },
 });
