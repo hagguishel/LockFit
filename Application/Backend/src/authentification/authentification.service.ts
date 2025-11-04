@@ -27,11 +27,9 @@ import { SendgridService } from '../notifications/sendgrid.service';
 // ----------------------------------------------------------------------
 // ⚙️ Variables d'environnement (avec valeurs par défaut raisonnables)
 // ----------------------------------------------------------------------
-
-// ⚠️ correction: JWT_ACCESS_TTL (et non JWT_ACCESSS_TTL)
 const ACCESS_TTL = process.env.JWT_ACCESS_TTL || '15m';
 const REFRESH_TTL = process.env.JWT_REFRESH_TTL || '30d';
-const MFA_TTL_SEC = Number(process.env.MFA_CODE_TTL_SEC || 300);
+const MFA_TTL_SEC = Number(process.env.MFA_CODE_TTL_SEC || 300); // durée du code challenge
 
 // ----------------------------------------------------------------------
 // 🧰 Helpers
@@ -40,10 +38,8 @@ const MFA_TTL_SEC = Number(process.env.MFA_CODE_TTL_SEC || 300);
 /** Convertit une durée lisible ("15m", "30d") en secondes numériques. */
 function parseTTL(ttl: string): number {
   const match = ttl.match(/^(\d+)([smhd])$/);
-  if (!match) {
-    return 900; // 15 minutes
-  }
-  const value = parseInt(match[1]);
+  if (!match) return 900; // 15 minutes
+  const value = parseInt(match[1], 10);
   const unit = match[2];
   switch (unit) {
     case 's':
@@ -100,7 +96,7 @@ export class AuthService {
     private readonly jwt: JwtService,
     private readonly mail: SendgridService,
   ) {
-    // Paramétrage TOTP (Google Authenticator) — optionnel
+    // Paramétrage TOTP (Google Authenticator) — on garde pour plus tard
     authenticator.options = {
       step: Number(process.env.TOTP_STEP ?? 30),
       digits: Number(process.env.TOTP_DIGITS ?? 6),
@@ -112,7 +108,6 @@ export class AuthService {
   // ======================================================================
   // 🔐 Emission des tokens (Access JWT + Refresh JWT hashé en DB)
   // ======================================================================
-
   private async issueTokens(utilisateur: { id: string; email: string }) {
     // 1) ACCESS (durée courte)
     const accessToken = await this.jwt.signAsync(
@@ -158,15 +153,12 @@ export class AuthService {
   }
 
   // ======================================================================
-  // 👤 Signup (facultatif)
+  // 👤 Signup
   // ======================================================================
-
   async signup(input: SignupInput): Promise<AuthResult> {
     const email = input.email.trim().toLowerCase();
     const emailexist = await this.prisma.utilisateur.findUnique({ where: { email } });
-    if (emailexist) {
-      throw new ConflictException('Email déjà existante');
-    }
+    if (emailexist) throw new ConflictException('Email déjà existante');
 
     const passwordHash = await argon2.hash(input.password);
 
@@ -184,15 +176,11 @@ export class AuthService {
       email: user.email,
     });
 
-    return {
-      accessToken,
-      refreshToken,
-      user: this.toPublicUser(user),
-    };
+    return { accessToken, refreshToken, user: this.toPublicUser(user) };
   }
 
   // ======================================================================
-  // 🔑 Login — si MFA activé, on crée un challenge et on renvoie tempSessionId
+  // 🔑 Login — si MFA activé → challenge 6 chiffres + email
   // ======================================================================
   async login(
     input: LoginInput,
@@ -205,7 +193,7 @@ export class AuthService {
     const ok = await argon2.verify(user.password, input.password);
     if (!ok) throw new UnauthorizedException('Identifiants invalides');
 
-    // 🔐 MFA ON → créer un challenge 6 chiffres et renvoyer un ticket temporaire
+    // 🔐 MFA ON → créer un challenge et envoyer le code par e-mail
     if (user.mfaEnabled) {
       const code = Math.floor(100000 + Math.random() * 900000).toString();
       const tempSessionId = randomBytes(24).toString('hex');
@@ -220,14 +208,26 @@ export class AuthService {
         },
       });
 
+      // 📫 Envoi email (si SendGrid est configuré)
+      try {
+        const minutes = Math.max(1, Math.ceil(MFA_TTL_SEC / 60));
+        if (typeof (this.mail as any).sendMfaCode === 'function') {
+          await (this.mail as any).sendMfaCode(user.email, code, minutes);
+        }
+      } catch {
+        // on n'empêche pas le flux MFA si l'email échoue
+      }
+
+      // En dev, on log le code en console
       if (process.env.NODE_ENV !== 'production') {
         // eslint-disable-next-line no-console
-        console.log(`[MFA] code pour ${email} = ${code}`);
+        console.log(`[MFA] Code pour ${email} = ${code} (valide ${Math.ceil(MFA_TTL_SEC / 60)} min)`);
       }
 
       return { mfaRequired: true, tempSessionId };
     }
-    // sinon ->tokens immédiats
+
+    // Sinon → tokens immédiats
     const { accessToken, refreshToken } = await this.issueTokens({
       id: user.id,
       email: user.email,
@@ -236,30 +236,24 @@ export class AuthService {
   }
 
   // ======================================================================
-  // ✅ MFA Verify — consomme le challenge (tempSessionId + code) → émet tokens
+  // ✅ MFA Verify — consomme le challenge → émet tokens
   // ======================================================================
-
   async mfaVerify(tempSessionId: string, code: string): Promise<AuthResult> {
-    // 1) retrouver le challenge
     const ch = await this.prisma.mfaChallenge.findUnique({ where: { tempSessionId } });
     if (!ch) throw new UnauthorizedException('Session MFA introuvable');
 
-    // 2) Vérification standard
     if (ch.used) throw new UnauthorizedException('Challenge déjà utilisé');
     if (ch.expiresAt.getTime() < Date.now()) throw new UnauthorizedException('Challenge expiré');
     if (ch.code !== code) throw new UnauthorizedException('Code incorrect');
 
-    // 3) Charger l'utilisateur
     const user = await this.prisma.utilisateur.findUnique({ where: { id: ch.utilisateurId } });
     if (!user) throw new UnauthorizedException('Utilisateur introuvable');
 
-    // 4) Marquer "used" (anti-replay)
     await this.prisma.mfaChallenge.update({
       where: { id: ch.id },
       data: { used: true },
     });
 
-    // 5) Emettre tokens
     const { accessToken, refreshToken } = await this.issueTokens({
       id: user.id,
       email: user.email,
@@ -268,13 +262,11 @@ export class AuthService {
   }
 
   // ======================================================================
-  // 🔁 Refresh — reçoit le refresh JWT (via body), vérifie & rotate
+  // 🔁 Refresh — reçoit le refresh JWT (via body) OU (via Authorization côté contrôleur)
   // ======================================================================
-
   async refresh(refreshTokenFromClient: string): Promise<AuthResult> {
     if (!refreshTokenFromClient) throw new BadRequestException('refresh manquant');
 
-    // 1) Vérifier signature/expiration du refresh JWT
     let payload: { sub: string; jti: string; exp: number };
     try {
       payload = this.jwt.verify(refreshTokenFromClient, {
@@ -288,7 +280,6 @@ export class AuthService {
     const tokenId = payload.jti;
     if (!userId || !tokenId) throw new UnauthorizedException('Refresh incomplet');
 
-    // 2) Retrouver l'enregistrement DB (non révoqué, non expiré)
     const rec = await this.prisma.refreshToken.findFirst({
       where: {
         utilisateurId: userId,
@@ -297,20 +288,16 @@ export class AuthService {
         expiresAt: { gt: new Date() },
       },
     });
-
     if (!rec) throw new UnauthorizedException('Refresh révoqué ou expiré');
 
-    // 3) comparer au HASH stocké (sécurité anti-substitution)
     const ok = await argon2.verify(rec.tokenHash, refreshTokenFromClient);
     if (!ok) throw new UnauthorizedException('Refresh non reconnu');
 
-    // 4) Rotation : révoquer l'ancien refresh
     await this.prisma.refreshToken.update({
       where: { id: rec.id },
       data: { revoked: true, revokedAt: new Date() },
     });
 
-    // 5) Re-générer tokens
     const user = await this.prisma.utilisateur.findUnique({ where: { id: userId } });
     if (!user) throw new UnauthorizedException('Utilisateur introuvable');
 
@@ -324,7 +311,6 @@ export class AuthService {
   // ======================================================================
   // 🚪 Logout — révoque le refresh courant (via Authorization: Bearer <refresh>)
   // ======================================================================
-
   async logout(userId: string, authzHeader: string) {
     const rawRefreshToken = fromAuthz(authzHeader);
     if (!rawRefreshToken) {
@@ -363,10 +349,8 @@ export class AuthService {
   }
 
   // ======================================================================
-  // 🧩 (Optionnel) TOTP (Google Authenticator)
+  // 🧩 (Optionnel) TOTP (Google Authenticator) — conservé pour plus tard
   // ======================================================================
-
-  /** Démarre le MFA TOTP : génère un secret + URL otpauth:// à scanner. */
   async mfaCreateSecret(id: string) {
     const user = await this.prisma.utilisateur.findUnique({ where: { id } });
     if (!user) throw new BadRequestException('Utilisateur introuvable');
@@ -417,37 +401,52 @@ export class AuthService {
       token: totpCode,
       secret: user.mfaSecret,
     });
-
-    if (!ok) {
-      throw new UnauthorizedException('Code TOTP invalide');
-    }
+    if (!ok) throw new UnauthorizedException('Code TOTP invalide');
 
     const { accessToken, refreshToken } = await this.issueTokens({
       id: user.id,
       email: user.email,
     });
 
-    return {
-      accessToken,
-      refreshToken,
-      user: this.toPublicUser(user),
-    };
+    return { accessToken, refreshToken, user: this.toPublicUser(user) };
+  }
+
+  // ----------------------------------------------------------------------
+  // ✅ Activer/Désactiver MFA (mode challenge 6 chiffres simple)
+  // ----------------------------------------------------------------------
+  async mfaEnableChallenge(userId: string) {
+    const user = await this.prisma.utilisateur.findUnique({ where: { id: userId } });
+    if (!user) throw new BadRequestException('Utilisateur introuvable');
+
+    const updated = await this.prisma.utilisateur.update({
+      where: { id: userId },
+      data: { mfaEnabled: true },
+    });
+
+    return { message: 'MFA activée', mfaEnabled: updated.mfaEnabled };
+  }
+
+  async mfaDisableChallenge(userId: string) {
+    const user = await this.prisma.utilisateur.findUnique({ where: { id: userId } });
+    if (!user) throw new BadRequestException('Utilisateur introuvable');
+
+    const updated = await this.prisma.utilisateur.update({
+      where: { id: userId },
+      data: { mfaEnabled: false },
+    });
+
+    return { message: 'MFA désactivée', mfaEnabled: updated.mfaEnabled };
   }
 
   // ======================================================================
   // ✉️ Vérification d'email
   // ======================================================================
-
-  /** Génère (ou remplace) le token de vérification et envoie l’email. */
   async requestEmailVerification(userId: string) {
     const user = await this.prisma.utilisateur.findUnique({ where: { id: userId } });
     if (!user) throw new NotFoundException('Utilisateur introuvable');
 
-    if (user.emailVerifiedAt) {
-      throw new BadRequestException('Email déjà vérifié');
-    }
+    if (user.emailVerifiedAt) throw new BadRequestException('Email déjà vérifié');
 
-    // Idempotent : supprime tout token précédent
     await this.prisma.emailVerification.deleteMany({ where: { userId } });
 
     const token = randomBytes(32).toString('hex');
@@ -465,36 +464,6 @@ export class AuthService {
     return { message: 'Email de vérification envoyé (si possible).', expiresAt };
   }
 
-  // ------------------------------------------------------------
-// ✅ Active le MFA Challenge simple (pas Google Authenticator)
-// ------------------------------------------------------------
-async mfaEnableChallenge(userId: string) {
-  const user = await this.prisma.utilisateur.findUnique({ where: { id: userId } });
-  if (!user) throw new BadRequestException("Utilisateur introuvable");
-
-  const updated = await this.prisma.utilisateur.update({
-    where: { id: userId },
-    data: { mfaEnabled: true },
-  });
-
-  return { message: "MFA activée", mfaEnabled: updated.mfaEnabled };
-}
-
-async mfaDisableChallenge(userId: string) {
-  const user = await this.prisma.utilisateur.findUnique({ where: { id: userId } });
-  if (!user) throw new BadRequestException("Utilisateur introuvable");
-
-  const updated = await this.prisma.utilisateur.update({
-    where: { id: userId },
-    data: { mfaEnabled: false },
-  });
-
-  return { message: "MFA désactivée", mfaEnabled: updated.mfaEnabled };
-}
-
-
-
-  /** Valide le token et marque l’email comme vérifié. */
   async verifyEmailToken(token: string) {
     if (!token) throw new BadRequestException('Token requis');
 
@@ -520,19 +489,15 @@ async mfaDisableChallenge(userId: string) {
   // ======================================================================
   // 🔒 Password reset
   // ======================================================================
-
-  /** Crée (ou remplace) un token de reset et envoie l’email. */
   async requestPasswordReset(email: string) {
     const normalized = email.trim().toLowerCase();
     const user = await this.prisma.utilisateur.findUnique({ where: { email: normalized } });
 
-    // Réponse générique (évite l’énumération d’emails)
     const genericResponse = {
       message: 'Si un compte existe pour cet e-mail, un lien de réinitialisation a été envoyé.',
     };
     if (!user) return genericResponse;
 
-    // Idempotent : supprimer les anciens reset non utilisés
     await this.prisma.passwordReset.deleteMany({
       where: { userId: user.id, used: false },
     });
@@ -541,21 +506,13 @@ async mfaDisableChallenge(userId: string) {
     const expiresAt = new Date(Date.now() + 30 * 60 * 1000); // 30 min
 
     await this.prisma.passwordReset.create({
-      data: {
-        userId: user.id,
-        token,
-        expiresAt,
-      },
+      data: { userId: user.id, token, expiresAt },
     });
 
-    // NEW: on essaie d'abord d'utiliser l'URL du front
     const baseUrl = process.env.APP_BASE_URL || `http://localhost:${process.env.PORT || 3001}`;
-
     const resetUrl =
-      process.env.PASSWORD_RESET_URL
-        || `${baseUrl}/api/v1/auth/password/reset?token=${token}`;
+      process.env.PASSWORD_RESET_URL || `${baseUrl}/api/v1/auth/password/reset?token=${token}`;
 
-    // Envoi d’email (si SendGrid configuré)
     if (typeof (this.mail as any).sendPasswordReset === 'function') {
       await (this.mail as any).sendPasswordReset(user.email, resetUrl, 30);
     }
@@ -563,7 +520,6 @@ async mfaDisableChallenge(userId: string) {
     return genericResponse;
   }
 
-  /** Valide le token et remplace le mot de passe (révoque tous les refresh actifs). */
   async confirmPasswordReset(token: string, newPassword: string) {
     if (!token) throw new BadRequestException('Token requis');
     if (!newPassword || newPassword.length < 8) {
@@ -575,7 +531,6 @@ async mfaDisableChallenge(userId: string) {
 
     if (record.used) throw new BadRequestException('Token déjà utilisé');
     if (record.expiresAt.getTime() < Date.now()) {
-      // Marque le token comme utilisé (nettoyage)
       await this.prisma.passwordReset.update({
         where: { id: record.id },
         data: { used: true },
@@ -589,17 +544,14 @@ async mfaDisableChallenge(userId: string) {
     const newHash = await argon2.hash(newPassword);
 
     await this.prisma.$transaction([
-      // 1) Mettre à jour le mot de passe
       this.prisma.utilisateur.update({
         where: { id: user.id },
         data: { password: newHash },
       }),
-      // 2) Marquer le token comme utilisé
       this.prisma.passwordReset.update({
         where: { id: record.id },
         data: { used: true },
       }),
-      // 3) Révoquer tous les refresh tokens encore actifs (sécurité)
       this.prisma.refreshToken.updateMany({
         where: { utilisateurId: user.id, revoked: false },
         data: { revoked: true, revokedAt: new Date() },

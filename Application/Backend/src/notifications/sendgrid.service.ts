@@ -1,3 +1,4 @@
+// src/notifications/sendgrid.service.ts
 import { Injectable, Logger } from '@nestjs/common';
 import * as sgMail from '@sendgrid/mail';
 
@@ -7,7 +8,7 @@ export class SendgridService {
   private readonly client: any;
 
   constructor() {
-    // 🔁 compat ESM/CJS
+    // compat ESM/CJS
     const client = (sgMail as any).default ?? sgMail;
     this.client = client;
 
@@ -46,7 +47,7 @@ export class SendgridService {
       await this.client.send(msg);
       this.logger.log(`Email de vérification envoyé à ${toEmail}`);
     } catch (err) {
-      this.logger.error('Erreur SendGrid', err as any);
+      this.logger.error('Erreur SendGrid (verify)', err as any);
     }
   }
 
@@ -72,6 +73,34 @@ export class SendgridService {
       this.logger.log(`Email de reset envoyé à ${toEmail}`);
     } catch (err) {
       this.logger.error('Erreur SendGrid (reset)', err as any);
+    }
+  }
+
+  // 🔴 NOUVEAU : envoi du code MFA par e-mail
+  async sendMfaCode(toEmail: string, code: string) {
+    if (!process.env.SENDGRID_API_KEY || !process.env.SENDGRID_FROM) {
+      this.logger.warn('Envoi MFA ignoré (clé ou expéditeur manquant).');
+      return;
+    }
+
+    const msg = {
+      to: toEmail,
+      from: process.env.SENDGRID_FROM!,
+      subject: 'LockFit – Ton code de connexion',
+      html: `
+        <p>Bonjour 👋</p>
+        <p>Voici ton code à 6 chiffres pour te connecter à LockFit :</p>
+        <p style="font-size: 26px; font-weight: 700; letter-spacing: 6px; margin: 18px 0;">${code}</p>
+        <p>Ce code expire dans quelques minutes.</p>
+        <p>Si tu n'es pas à l'origine de cette connexion, tu peux ignorer cet e-mail.</p>
+      `,
+    };
+
+    try {
+      await this.client.send(msg);
+      this.logger.log(`Code MFA envoyé à ${toEmail}`);
+    } catch (err) {
+      this.logger.error('Erreur SendGrid (MFA)', err as any);
     }
   }
 }
