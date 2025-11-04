@@ -1,15 +1,16 @@
 {
   "name": "lockfit-api",
   "version": "1.0.0",
+  "private": true,
   "main": "dist/principal.js",
   "prisma": {
     "seed": "ts-node prisma/seed.ts"
   },
   "scripts": {
-    "build": "npx prisma generate && tsc -p tsconfig.json",
+    "build": "prisma generate && tsc -p tsconfig.json",
     "start": "node dist/principal.js",
     "start:dev": "ts-node src/principal.ts",
-    "db:seed": "npx prisma db seed"
+    "db:seed": "prisma db seed"
   },
   "dependencies": {
     "@nestjs/common": "^11.1.6",
@@ -30,10 +31,7 @@
     "otplib": "^12.0.1",
     "passport": "^0.7.0",
     "passport-jwt": "^4.0.1",
-    "prisma": "^6.18.0",
-    "prisma": "^6.18.0",
     "reflect-metadata": "^0.2.2",
-    "rxjs": "^7.8.2"
     "rxjs": "^7.8.2"
   },
   "devDependencies": {
@@ -48,6 +46,7 @@
     "supertest": "^7.1.4",
     "ts-jest": "^29.4.4",
     "ts-node": "^10.9.2",
-    "typescript": "^5.9.3"
+    "typescript": "^5.9.3",
+    "prisma": "^6.18.0"
   }
 }
