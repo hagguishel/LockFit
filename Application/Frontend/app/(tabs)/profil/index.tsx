@@ -18,7 +18,7 @@ export default function ProfileScreen() {
   const [loadingMfa, setLoadingMfa] = useState(false);
 
   // -------------------------
-  // Déconnexion (ton code)
+  // Déconnexion
   // -------------------------
   async function handleLogout() {
     if (loadingLogout) return;
@@ -27,13 +27,17 @@ export default function ProfileScreen() {
     try {
       const tokens = await loadTokens();
 
+      // Appel API pour invalider le refresh token
       if (tokens?.refresh) {
         await httpPost<void>("/auth/logout", undefined, {
           token: tokens.refresh,
         });
       }
 
+      // On efface les tokens côté app
       await clearTokens();
+
+      // Redirection vers l'écran de login
       router.replace("/auth/login");
     } catch (e: any) {
       await clearTokens();
@@ -45,54 +49,38 @@ export default function ProfileScreen() {
   }
 
   // -------------------------
-  // Activer MFA
-  // on appelle POST /auth/mfa/secret
-  // (ton backend renvoie {secret, otpauthUrl})
+  // Activer MFA (Challenge)
   // -------------------------
-    async function handleEnableMfa() {
+  async function handleEnableMfa() {
     if (loadingMfa) return;
     setLoadingMfa(true);
 
     try {
       const tokens = await loadTokens();
-      const access = tokens?.access;
-      if (!access) {
-        Alert.alert("Erreur", "Tu dois être connecté pour activer le MFA.");
+      if (!tokens?.access) {
+        Alert.alert("Erreur", "Non authentifié");
         return;
       }
 
-      const res = await httpPost<{ secret: string; otpauthUrl: string }>(
-        "/auth/mfa/secret",
-        undefined,
-        {
-          token: access,
-        }
-      );
-
-      // si ton httpPost peut renvoyer null/undefined
-      if (!res) {
-        Alert.alert(
-          "Erreur",
-          "Réponse vide du serveur. Vérifie le backend ou les logs."
-        );
-        return;
-      }
+      await httpPost("/auth/mfa/enable", undefined, {
+        token: tokens.access, // JWT Access Token
+      });
 
       Alert.alert(
-        "MFA initialisé",
-        `Secret : ${res.secret}\n\nURL (à scanner) : ${res.otpauthUrl}\n\nEnsuite appelle /auth/mfa/enable avec le code TOTP.`
+        "MFA activée",
+        "L’authentification à deux facteurs est maintenant activée sur ton compte."
       );
-    } catch (e: any) {
-      console.log("❌ MFA error", e);
-      Alert.alert(
-        "Erreur",
-        e?.message || "Impossible d’activer le MFA pour le moment."
-      );
+    } catch (e) {
+      console.error(e);
+      Alert.alert("Erreur", "Impossible d’activer la MFA pour le moment.");
     } finally {
       setLoadingMfa(false);
     }
   }
 
+  // -------------------------
+  // UI
+  // -------------------------
   return (
     <SafeAreaView style={{ flex: 1, backgroundColor: "#0F1420" }}>
       <ScrollView
@@ -106,7 +94,7 @@ export default function ProfileScreen() {
         <Text
           style={{
             color: "#fff",
-            fontSize: 20,
+            fontSize: 22,
             fontWeight: "700",
             marginBottom: 16,
           }}
@@ -121,7 +109,7 @@ export default function ProfileScreen() {
             maxWidth: 420,
             backgroundColor: "#101628",
             borderRadius: 18,
-            padding: 18,
+            padding: 20,
             alignItems: "center",
           }}
         >
@@ -137,7 +125,6 @@ export default function ProfileScreen() {
               marginBottom: 10,
             }}
           >
-            {/* tu peux remplacer par une vraie Image plus tard */}
             <Image
               source={{
                 uri: "https://i.pravatar.cc/150?img=12",
@@ -146,15 +133,21 @@ export default function ProfileScreen() {
             />
           </View>
 
-          {/* pseudo + date */}
+          {/* Nom utilisateur */}
           <Text style={{ color: "#fff", fontSize: 18, fontWeight: "700" }}>
             @FitnessMax
           </Text>
-          <Text style={{ color: "rgba(255,255,255,0.6)", marginBottom: 16 }}>
+          <Text
+            style={{
+              color: "rgba(255,255,255,0.6)",
+              marginBottom: 16,
+              fontSize: 13,
+            }}
+          >
             Membre depuis janvier 2024
           </Text>
 
-          {/* stats */}
+          {/* Stats */}
           <View
             style={{
               flexDirection: "row",
@@ -163,26 +156,32 @@ export default function ProfileScreen() {
             }}
           >
             <View style={{ alignItems: "center" }}>
-              <Text style={{ color: "#12E29A", fontSize: 18, fontWeight: "700" }}>
+              <Text
+                style={{ color: "#12E29A", fontSize: 18, fontWeight: "700" }}
+              >
                 124
               </Text>
               <Text style={{ color: "#fff", fontSize: 12 }}>Followers</Text>
             </View>
             <View style={{ alignItems: "center" }}>
-              <Text style={{ color: "#fff", fontSize: 18, fontWeight: "700" }}>
+              <Text
+                style={{ color: "#fff", fontSize: 18, fontWeight: "700" }}
+              >
                 0
               </Text>
               <Text style={{ color: "#fff", fontSize: 12 }}>Trophées</Text>
             </View>
             <View style={{ alignItems: "center" }}>
-              <Text style={{ color: "#fff", fontSize: 18, fontWeight: "700" }}>
+              <Text
+                style={{ color: "#fff", fontSize: 18, fontWeight: "700" }}
+              >
                 0
               </Text>
               <Text style={{ color: "#fff", fontSize: 12 }}>Entraînements</Text>
             </View>
           </View>
 
-          {/* boutons onglets (fake) */}
+          {/* Boutons de section (fake) */}
           <View
             style={{
               flexDirection: "row",
@@ -223,13 +222,8 @@ export default function ProfileScreen() {
             </View>
           </View>
 
-          {/* bloc "paramètres sécurité" */}
-          <View
-            style={{
-              width: "100%",
-              gap: 10,
-            }}
-          >
+          {/* Paramètres sécurité */}
+          <View style={{ width: "100%", gap: 10 }}>
             {/* Activer MFA */}
             <Pressable
               onPress={handleEnableMfa}
