@@ -113,7 +113,7 @@ export async function http<T = unknown>(
     body,
     signal: externalSignal = null,
     headers: extraHeaders,
-    timeoutMs = 20000,
+    timeoutMs = 30000,
     token = null,
     _retry = false,
   } = opts;
