@@ -6,6 +6,7 @@ import {
 import { PrismaService } from '../prisma/prisma.service';
 import { CreateWorkoutDto } from './dto/create-workout.dto';
 import { UpdateWorkoutDto } from './dto/update-workout.dto';
+import { UpdatesetDto } from './dto/update-set.dto';
 
 
 @Injectable()
@@ -81,6 +82,26 @@ export class WorkoutsService {
     });
   }
 
+  async updateSet(workoutId: string, setId: string, dto: UpdatesetDto) {
+    const set = await this.prisma.workoutSet.findUnique({
+      where: { id: setId },
+      include: { item: { select: {workoutId: true } } },
+    });
+    if (!set) throw new NotFoundException('Set introuvable');
+    if (set.item.workoutId !== workoutId) {
+      throw new BadRequestException('Set non lié à ce workout');
+    }
+
+    return this.prisma.workoutSet.update({
+      where: { id: setId },
+      data: {
+        ...(dto.reps !== undefined ? { reps: dto.reps } : {}),
+        ...(dto.weight !== undefined ? { weight: dto.weight } : {}),
+        ...(dto.rest !== undefined ? { rest: dto.rest } : {}),
+        ...(dto.rpe !== undefined ? { rpe: dto.rpe } : {}),
+      },
+    });
+  }
   /**
    * Lister tous les workouts avec filtres temporels
    */
@@ -130,23 +151,16 @@ export class WorkoutsService {
    * Mettre à jour un workout (sans toucher aux items/sets)
    */
   async update(id: string, dto: UpdateWorkoutDto) {
-    // Vérifier existence
     await this.findOne(id);
-
-    // Construire l'objet data dynamiquement
     const data: any = {};
     if (dto.title !== undefined) data.title = dto.title;
     if (dto.note !== undefined) data.note = dto.note;
-    if (dto.finishedAt !== undefined) {
-      data.finishedAt = this.toDateOrThrow(dto.finishedAt);
-    }
-    if (dto.items !== undefined)
-      data.items = dto.items;
-    console.log(data)
+    if (dto.finishedAt !== undefined) data.finishedAt = this.toDateOrThrow(dto.finishedAt);
+
     return this.prisma.workout.update({
       where: { id },
       data,
-      include: this.includeRelations, // ✅ CORRIGÉ
+      include: this.includeRelations,
     });
   }
 
@@ -178,7 +192,7 @@ export class WorkoutsService {
       include: { item: { select: { workoutId: true } } },
     });
     if (!set) throw new NotFoundException('Set introuvable');
-    if (set.item.workoutId != workoutId) {
+    if (set.item.workoutId !== workoutId) {
       throw new BadRequestException('Set non lié a ce workout');
     }
 
