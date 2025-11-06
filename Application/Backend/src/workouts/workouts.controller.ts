@@ -3,6 +3,8 @@ import { Controller, Get, Post, Body, Param, Patch, Delete, Query, HttpCode, Htt
 import { CreateWorkoutDto } from './dto/create-workout.dto';    // Contrat d'entrée pour créer un workout
 import { WorkoutsService } from './workouts.service';           // Service qui parlera à la base
 import { UpdateWorkoutDto } from './dto/update-workout.dto';
+import { UpdatesetDto } from './dto/update-set.dto';
+import { finished } from 'stream';
 @Controller(['workouts', 'entrainements'])                        // Toutes les routes ici commencent par /workouts
 export class WorkoutsController {                                // Contrôleur = “standardiste” HTTP
   constructor(private readonly service: WorkoutsService) {}      // Injection du service (logique & DB)
@@ -13,8 +15,12 @@ export class WorkoutsController {                                // Contrôleur 
   }
 
   @Get()                                                                 // GET /api/v1/workouts
-  findAll(@Query('from') from?: string, @Query('to') to?: string) {     // Passe les éventuels filtres de date au service
-    return this.service.findAll({ from, to });                         // Délègue la lecture au service et renvoie { items, total }
+  findAll(@Query('from') from?: string, @Query('to') to?: string, @Query('finished') finished?: string,) {     // Passe les éventuels filtres de date au service
+      const f =
+    finished === undefined
+      ? undefined
+      : finished.toLowerCase() === 'true';
+  return this.service.findAll({ from, to, finished: f });                         // Délègue la lecture au service et renvoie { items, total }
   }
 
   //GET /api/v1/workouts/:id - détail d'une séance, @Param ('id') lit le segment url
@@ -36,6 +42,15 @@ export class WorkoutsController {                                // Contrôleur 
   ) {
     console.log('🛠️ PATCH /workouts/%s/sets/%s/complete', workoutId, setId);
     return this.service.completeSet(workoutId, setId);
+  }
+
+  @Patch(':id/sets/:setId')
+  updateSet(
+    @Param('id') workoutId: string,
+    @Param('setId') setId: string,
+    @Body() dto: UpdatesetDto,
+  ) {
+    return this.service.updateSet(workoutId, setId, dto);
   }
   // DELETE /api/v1/workouts/:id — supprime une séance
   @Delete(':id')

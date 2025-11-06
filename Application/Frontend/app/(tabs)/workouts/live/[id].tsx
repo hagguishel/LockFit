@@ -115,7 +115,10 @@ export default function LiveWorkoutScreen() {
       if (debounceTimer.current) clearTimeout(debounceTimer.current);
       debounceTimer.current = setTimeout(async () => {
         // Anti chevauchement d’appels API
-        if (inflight.current) return scheduleSave(nextItems);
+        if (inflight.current) {
+          setTimeout(() => scheduleSave(nextItems), 200);
+          return;
+        };
         try {
           inflight.current = true;
           setSaving(true);
@@ -311,10 +314,15 @@ export default function LiveWorkoutScreen() {
 
               {/* Ligne par serie */}
               {currentItem.sets.map((s, i) => {
-                const setReps = (delta: number) =>
-                  patchSetLocal(s.id!, { reps: Math.max(0, (s.reps ?? 0) + delta) });
-                const setKg = (delta: number) =>
-                  patchSetLocal(s.id!, { weight: Math.max(0, (s.weight ?? 0) + delta) });
+                const setReps = (delta: number) => {
+                  const newReps = Math.max(0, (s.reps ?? 0) + delta);
+                  patchSetLocal(s.id!, {reps: newReps });
+                };
+
+                const setKg = (delta: number) => {
+                  const newKg = Math.max(0, (s.weight ?? 0) + delta);
+                  patchSetLocal(s.id!, { weight: newKg});
+                };
 
                 return (
                   <View key={s.id || i}  style={[styles.tr, s.completed && styles.trDone]}>
@@ -347,7 +355,7 @@ export default function LiveWorkoutScreen() {
                     </View>
 
                     {/* REPS */}
-                    <View style={styles.th}>
+                    <View style={styles.td}>
                       <View style={styles.stepper}>
                         <Pressable
                         disabled={s.completed}
@@ -587,6 +595,7 @@ const styles = StyleSheet.create({
     borderRadius: 14,
     backgroundColor: "#0f1624",
     borderColor: "rgba(124,211,255,0.08)",
+    borderWidth: 1,
     gap: 8,
   },
   trDone: {

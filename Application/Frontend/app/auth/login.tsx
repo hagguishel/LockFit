@@ -1,4 +1,4 @@
-// app/auth/login.tsx - Ecran de connexion 
+// app/auth/login.tsx - Ecran de connexion
 import React, { useState } from "react";
 import {
   View,
