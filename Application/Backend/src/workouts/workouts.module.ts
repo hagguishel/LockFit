@@ -8,6 +8,7 @@ import { PrismaModule } from '../prisma/prisma.module';
 @Module({
   imports: [PrismaModule],
   providers: [WorkoutsService],
-  controllers: [WorkoutsController]
+  controllers: [WorkoutsController],
+  exports: [WorkoutsService],
 })
 export class WorkoutsModule {}

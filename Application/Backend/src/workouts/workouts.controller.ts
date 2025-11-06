@@ -4,7 +4,6 @@ import { CreateWorkoutDto } from './dto/create-workout.dto';    // Contrat d'ent
 import { WorkoutsService } from './workouts.service';           // Service qui parlera à la base
 import { UpdateWorkoutDto } from './dto/update-workout.dto';
 import { UpdatesetDto } from './dto/update-set.dto';
-import { finished } from 'stream';
 @Controller(['workouts', 'entrainements'])                        // Toutes les routes ici commencent par /workouts
 export class WorkoutsController {                                // Contrôleur = “standardiste” HTTP
   constructor(private readonly service: WorkoutsService) {}      // Injection du service (logique & DB)

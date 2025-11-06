@@ -238,15 +238,33 @@ export async function http<T = unknown>(
   }
   // ====================== FIN 401 → refresh → retry ======================
 
-  if (!res.ok) {
-    const msg =
-      (data && (typeof data === "object") && ("message" in data || "error" in data)
-        ?
-          (data.message || data.error)
-        : `HTTP ${res.status}`);
-    const text = Array.isArray(msg) ? msg.join("\n") : String(msg);
-    throw new HttpError(res.status, text, data);
+if (!res.ok) {
+  let payload: any = null;
+  try {
+    payload = await res.clone().json();
+  } catch {
+    try {
+      payload = await res.clone().text();
+    } catch {
+      payload = null;
+    }
   }
+
+  // ⚠️ Utilise bien "payload" (et pas "data")
+  const raw =
+    payload && typeof payload === "object"
+      ? (Array.isArray(payload.message) ? payload.message.join("\n")
+         : (payload.message || payload.error || payload.detail))
+      : (typeof payload === "string" ? payload : null);
+
+  const text = raw ? String(raw) : `HTTP ${res.status}`;
+
+  // 👇 Log clair dans Metro pour voir la vraie erreur backend
+  console.error("❌ BACKEND ERROR", { url, status: res.status, payload });
+
+  throw new HttpError(res.status, text, payload);
+}
+
 
   return (data as T) ?? null;
 }
