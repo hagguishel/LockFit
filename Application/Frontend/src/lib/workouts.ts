@@ -1,52 +1,92 @@
 // src/lib/workouts.ts
-// Client métier pour parler aux routes /workouts
-import { http } from "@/api/http";
-import type { Workout, WorkoutItem, WorkoutSet } from "@/types/workout";
+// Client "métier" du FRONT pour parler aux routes /workouts de l'API Nest.
+//
+// PRINCIPES IMPORTANTS
+// --------------------
+// 1) PATCH /workouts/:id n'accepte QUE: { title, note, finishedAt }.
+//    ❌ NE JAMAIS envoyer { items: [...] } sur cette route -> 400 "property items should not exist"
+//    ✅ Pour modifier une SERIE (set): utiliser PATCH /workouts/:workoutId/sets/:setId
+//
+// 2) On centralise ici toutes les fonctions d'appel à l'API pour que les écrans
+//    n'aient pas à connaître la forme exacte des endpoints.
+//
+// 3) On utilise les helpers httpGet/httpPatch/httpPost pour plus de lisibilité
+//    (http "générique" reste importé pour DELETE, sauf si tu as un httpDelete).
 
-export type ListResponse = { //Ce que renvoie GET /workouts
-    items: Workout[];
-    total: number;
+import { http, httpGet, httpPatch, httpPost } from "@/api/http";
+import type {
+  Workout,
+  WorkoutItem,
+  WorkoutSet,
+  WorkoutSetPatch, // défini dans src/types/workout.ts
+} from "@/types/workout";
+
+// -------- Types de réponses/requêtes --------
+
+/** Réponse de GET /workouts (liste paginée simple) */
+export type ListResponse = {
+  items: Workout[];
+  total: number;
 };
 
-export type CreateWorkoutInput = { //Ce que renvoie POST /workouts
-    title: string;
-    note?: string;
-    finishedAt?: string;
-    items?: WorkoutItem[];
+/** Corps attendu par POST /workouts (création) */
+export type CreateWorkoutInput = {
+  title: string;
+  note?: string;
+  finishedAt?: string;
+  items?: WorkoutItem[]; // optionnel: tu peux créer direct avec items/sets
 };
 
+/** Petits types utilitaires (si besoin pour composer des items localement) */
 export type PatchSerie = { reps?: number; weight?: number | null; rest?: number | null };
 export type PatchItem = { exerciseId?: string; order?: number; sets?: PatchSerie[] };
 export type UpdateWorkoutPatch = { items?: PatchItem[] };
-export type UpdateWorkoutBody = Partial<CreateWorkoutInput> | UpdateWorkoutPatch;
 
+/**
+ * ⚠️ Type RESTREINT pour PATCH /workouts/:id
+ * ==> UNIQUEMENT ce que le backend accepte sur cette route
+ * ==> On évite ainsi d'envoyer des champs interdits (ex: items)
+ */
+export type UpdateWorkoutBody = Partial<
+  Pick<CreateWorkoutInput, "title" | "note" | "finishedAt">
+>;
+
+// -------- Endpoints --------
+
+/**
+ * GET /workouts
+ * - Filtre possible par "from" et "to" (ISO string)
+ * - Retourne { items, total }
+ */
 export async function listWorkouts(params?: { from?: string; to?: string }): Promise<ListResponse> {
-  //params peut contenir "from" et/ou "to". Coté back Nest, ca arrive sur findAll (from et to pour lister)
-  const qs = new URLSearchParams();                                         //créer un constructeur de query string
-  if (params?.from) qs.set("from", params.from);                            //Si params existe et qu'il contient un from, on ajoute une valeur a from
-  if (params?.to) qs.set("to", params.to);                                  //Si params existe et qu'il contient un to, on ajoute une valeur a to
-  const suffix = qs.toString() ? `?${qs.toString()}` : "";                  //S’il y a au moins un paramètre de filtre, fabrique ?from=...&to=.... Sinon, ne rajoute rien à l’URL.
+  const qs = new URLSearchParams();
+  if (params?.from) qs.set("from", params.from);
+  if (params?.to) qs.set("to", params.to);
+  const suffix = qs.toString() ? `?${qs.toString()}` : "";
 
-  const data = await http<ListResponse>(`/workouts${suffix}`);
+  const data = await httpGet<ListResponse>(`/workouts${suffix}`);
 
-  // 🔒 Normalisation: jamais null/undefined
+  // Normalisation pour éviter null/undefined côté UI
   return {
     items: data?.items ?? [],
     total: typeof data?.total === "number" ? data.total : (data?.items?.length ?? 0),
   };
 }
 
-/** Détail d’une séance (GET /workouts/:id) */
+/**
+ * GET /workouts/:id
+ * - Détail d'une séance, avec items + sets + exercise
+ */
 export async function getWorkout(id: string): Promise<Workout> {
-  const w = await http<Workout>(`/workouts/${id}`);
+  const w = await httpGet<Workout>(`/workouts/${id}`);
   if (!w) throw new Error("Séance introuvable");
   return w;
 }
 
-/** Création d’une séance (POST /workouts)
- *  NB: ton écran new.tsx envoie seulement { title } pour l’instant.
+/**
+ * POST /workouts
+ * - Création d'une séance (tu peux créer sans items au début)
  */
-
 export async function createWorkout(input: CreateWorkoutInput) {
   const payload = {
     title: input.title,
@@ -54,62 +94,79 @@ export async function createWorkout(input: CreateWorkoutInput) {
     finishedAt: input.finishedAt,
     items: Array.isArray(input.items) ? input.items : [],
   };
-  return http<Workout>("/workouts", { method: "POST", body: payload });
+  return httpPost<Workout>("/workouts", payload);
 }
 
-/** Mise à jour d’une séance (PATCH /workouts/:id) */
-export async function updateWorkout(
-  id: string,
-  body: UpdateWorkoutBody
-) {
-  return http<Workout>(`/workouts/${id}`, {
-    method: "PATCH",
-    body,
-  });
+/**
+ * PATCH /workouts/:id
+ * ⚠️ N'accepte QUE: { title, note, finishedAt }
+ * -> NE PAS envoyer { items } ici (sinon 400)
+ */
+export async function updateWorkout(id: string, body: UpdateWorkoutBody) {
+  return httpPatch<Workout>(`/workouts/${id}`, body);
 }
 
-/** Suppression (DELETE /workouts/:id) */
+/**
+ * DELETE /workouts/:id
+ * - Suppression de la séance (cascade items/sets côté DB)
+ * - Remarque: si tu as un helper httpDelete, tu peux l'utiliser ici.
+ */
 export async function deleteWorkout(id: string) {
-  return http<{ ok: true; id: string }>(`/workouts/${id}`, {
-    method: "DELETE",
-  });
+  return http<{ ok: true; id: string }>(`/workouts/${id}`, { method: "DELETE" });
 }
 
-/** Marquer une serie comme termine */
-export async function completeSet(workoutId :string, setId: string) {
-  return http<WorkoutSet>(`/workouts/${workoutId}/sets/${setId}/complete`, {
-    method: "PATCH",
-    body: {},
-  });
+/**
+ * PATCH /workouts/:workoutId/sets/:setId/complete
+ * - Marquer 1 série comme terminée
+ */
+export async function completeSet(workoutId: string, setId: string) {
+  return httpPatch<WorkoutSet>(`/workouts/${workoutId}/sets/${setId}/complete`, {});
 }
 
-/** Marquer comme terminée (POST /workouts/:id/finish) */
+/**
+ * PATCH /workouts/:workoutId/sets/:setId
+ * - ✅ Route à utiliser pour les boutons +/− sur reps/poids/rest/RPE
+ * - Le backend gère:
+ *   * null préservé (ex: rpe:null ne devient pas 0)
+ *   * "" ignoré (ex: rest:"" => inchangé)
+ */
+export async function updateSet(workoutId: string, setId: string, patch: WorkoutSetPatch) {
+  return httpPatch<WorkoutSet>(`/workouts/${workoutId}/sets/${setId}`, patch);
+}
+
+/**
+ * POST /workouts/:id/finish
+ * - Marque la séance comme terminée (finishedAt = now)
+ */
 export async function finishWorkout(id: string) {
-  return http<Workout>(`/workouts/${id}/finish`, { method: "POST" });
+  return httpPost<Workout>(`/workouts/${id}/finish`, {});
 }
 
-// export pratique si tes écrans font `import { type Workout } from "@/lib/workouts"`
+/** Re-export pratique si tes écrans font `import { type Workout } from "@/lib/workouts"` */
 export type { Workout } from "@/types/workout";
 
-/** Ajout un item (exercise) à une scéance existante */
+// -------- Fonction volontairement désactivée --------
 
+/**
+ * Ajout d'un item (exercice) dans une séance existante (DÉSACTIVÉ).
+ *
+ * ❌ Actuellement, ton backend NE PERMET PAS de modifier "items"
+ *    via PATCH /workouts/:id, d'où l'erreur 400 si on tente.
+ *
+ * ✅ À faire plus tard côté API si tu veux cette feature:
+ *    - Créer un endpoint dédié: POST /workouts/:id/items
+ *    - et éventuellement: DELETE /workouts/:id/items/:itemId, PATCH /.../items/:itemId, etc.
+ */
 export type NewWorkoutItemInput = {
-  exerciseId: string;               // id d'un exercise en DB
-  reps: number;                     // nb de rep
+  exerciseId: string; // id d'un exercice existant en DB
+  reps: number;
   weight?: number;
   rest?: number;
 };
 
-export async function addWorkoutItem(workoutId :string, input: NewWorkoutItemInput) {
-  //1) charger la sceance actuelle
-  const w = await getWorkout(workoutId);
-  //2) fabriquer l'item a partir de l'input
-  const nextOrder = (w.items?.length ?? 0) + 1;
-  const newItem: PatchItem = {
-    exerciseId: input.exerciseId,
-    order: nextOrder,
-    sets: [{ reps: input.reps, weight: input.weight, rest: input.rest }],
-  };
- await updateWorkout(workoutId, { items: [newItem] });
- return getWorkout(workoutId);
+export async function addWorkoutItem(_workoutId: string, _input: NewWorkoutItemInput) {
+  throw new Error(
+    "addWorkoutItem désactivé: pas d'endpoint backend pour ajouter un item à une séance. " +
+      "Implémente POST /workouts/:id/items côté API si tu veux cette fonctionnalité."
+  );
 }

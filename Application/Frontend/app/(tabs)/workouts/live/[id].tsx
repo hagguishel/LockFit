@@ -22,7 +22,10 @@ import {
   getWorkout,
   completeSet,
   finishWorkout,
-  updateWorkout,
+  // ⛔️ on n’utilise plus updateWorkout pour +/-
+  // updateWorkout,
+  // ✅ on cible maintenant le set précis
+  updateSet,
   type Workout,
 } from "@/lib/workouts";
 
@@ -38,34 +41,12 @@ const dec = (v: number | null | undefined, step = 1, min = 0) =>
    📱 Écran
    ========================================================================= */
 export default function LiveWorkoutScreen() {
-  type PatchableSet = { reps?: number; weight?: number| null; rest?: number | null };
-  type PatchableItem ={ exerciseId?: string; order?: number; sets?: PatchableSet[] };
+  // ⛔️ plus besoin des types Patchable* ni de stripForPatch()
+  // (on ne PATCH plus des items entiers, mais un set ciblé)
+  // type PatchableSet = { ... }
+  // type PatchableItem = { ... }
+  // function stripForPatch(...) { ... }
 
-  function stripForPatch(items: Workout["items"] | undefined | null): PatchableItem[] {
-    const safe: PatchableItem[] = [];
-    for (const it  of items ?? []) {
-      safe.push({
-        exerciseId: it.exerciseId,
-        order: typeof it.order === "number" ? it.order : undefined,
-        sets: (it.sets ?? []).map((s) => ({
-          reps: Number.isFinite(s.reps as any) ? (s.reps as number) : undefined,
-          weight:
-          typeof s.weight === "number"
-          ? (s.weight as number)
-          : s.weight === null
-          ? null
-          : undefined,
-          rest:
-          s.rest === null
-          ? undefined
-          :Number.isFinite(s.rest as any)
-          ? (s.rest as number)
-          : undefined,
-        })),
-      });
-    }
-    return safe;
-  }
   const { id } = useLocalSearchParams<{ id: string }>(); // id du workout dans l’URL
   const router = useRouter();
 
@@ -101,7 +82,6 @@ export default function LiveWorkoutScreen() {
 
   /* =======================================================================
      🧩 Exercice courant + Exercices à venir
-     - Exercice courant = premier qui contient une série non complétée
      ======================================================================= */
   const currentIndex = useMemo(() => {
     if (!data) return 0;
@@ -125,69 +105,43 @@ export default function LiveWorkoutScreen() {
   }, [data]);
 
   /* =======================================================================
-     💾 Sauvegarde auto (debounce + file d’attente)
-     - À chaque modification locale, on schedule un PATCH minimal vers l’API
+     ⛔️ SUPPRIMÉ : file d’attente & debounce pour PATCH /workouts avec items
+     - Ce bloc envoyait { items } -> 400 côté backend.
+     - On remplace par un PATCH ciblé du set + UI optimiste.
      ======================================================================= */
-  // File de patches (items complets), on n’envoie jamais des sets isolés
-  const pendingPatchRef = useRef<any | null>(null);
-  const debounceTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
-  const inflight = useRef<boolean>(false);
-
-  const scheduleSave = useCallback(
-    (nextItems: Workout["items"]) => {
-      if (!id) return;
-      // 1) On garde le dernier état à patcher
-      pendingPatchRef.current = { items: nextItems };
-
-      // 2) Debounce 500ms pour regrouper plusieurs clics
-      if (debounceTimer.current) clearTimeout(debounceTimer.current);
-      debounceTimer.current = setTimeout(async () => {
-        // Anti chevauchement d’appels API
-        if (inflight.current) {
-          setTimeout(() => scheduleSave(nextItems), 200);
-          return;
-        };
-        try {
-          inflight.current = true;
-          setSaving(true);
-          const raw = pendingPatchRef.current;
-          pendingPatchRef.current = null;
-          const payload = { items: stripForPatch(raw?.items) };
-
-          console.log("📤 PATCH /workouts/:id (sanitized)", payload);
-          await updateWorkout(id, payload as any);
-          console.log("✅ Sauvegarde OK");
-        } catch (e) {
-          console.error("❌ Sauvegarde échouée", e);
-          Alert.alert("Erreur", "Impossible de sauvegarder les changements (réseau/API).");
-          // En cas d’erreur, on recharge la vérité serveur
-          await load();
-        } finally {
-          inflight.current = false;
-          setSaving(false);
-        }
-      }, 500);
-    },
-    [id, load]
-  );
+  // const pendingPatchRef = useRef<any | null>(null);
+  // const debounceTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+  // const inflight = useRef<boolean>(false);
+  // const scheduleSave = useCallback(...)
 
   /* =======================================================================
-     🧱 Patch local d’un set (Optimistic UI) + schedule du PATCH serveur
+     ✅ Nouveau : patch d’un SET (optimistic UI + PATCH ciblé)
+     - Met à jour l’état local puis appelle PATCH /workouts/:id/sets/:setId
+     - En cas d’échec, rollback (reload)
      ======================================================================= */
-  const patchSetLocal = useCallback(
-    (setId: string, patch: Partial<{ reps: number; weight: number | null }>) => {
+  const patchSet = useCallback(
+    async (setId: string, patch: Partial<{ reps: number; weight: number | null; rest?: number | null; rpe?: number | null }>) => {
+      if (!id) return;
+      // 1) UI optimiste
       setData((prev) => {
         if (!prev) return prev;
         const nextItems = (prev.items ?? []).map((it) => ({
           ...it,
           sets: (it.sets ?? []).map((s) => (s.id === setId ? { ...s, ...patch } : s)),
         }));
-        // 👇 on schedule un PATCH serveur pour ce nouvel état
-        scheduleSave(nextItems);
         return { ...prev, items: nextItems };
       });
+
+      // 2) PATCH ciblé sur le set
+      try {
+        await updateSet(id, setId, patch as any);
+      } catch (e) {
+        console.error("❌ Erreur updateSet:", e);
+        Alert.alert("Erreur", "Impossible de sauvegarder la série (réseau/API).");
+        await load(); // rollback depuis la source de vérité
+      }
     },
-    [scheduleSave]
+    [id, load]
   );
 
   /* =======================================================================
@@ -214,8 +168,7 @@ export default function LiveWorkoutScreen() {
 
     // 2) Appel API (PATCH dédié)
     try {
-      const updated = await completeSet(id, setId);
-      console.log("✅ Série validée côté API:", updated);
+      await completeSet(id, setId);
     } catch (e) {
       console.error("❌ Erreur completeSet:", e);
       await load(); // rollback si erreur
@@ -312,16 +265,16 @@ export default function LiveWorkoutScreen() {
             <View style={styles.card}>
               <View style={{ flexDirection: "row", alignItems: "center", gap: 12, marginBottom: 8}}>
                 <View
-                style={{
-                  width: 44,
-                  height: 44,
-                  borderRadius: 12,
-                  alignItems: "center",
-                  justifyContent: "center",
-                  backgroundColor: "rgba(18,226,154,0.12)",
-                  borderWidth: 1.5,
-                  borderColor: "rgba(18,226,156,0.35)",
-                }}
+                  style={{
+                    width: 44,
+                    height: 44,
+                    borderRadius: 12,
+                    alignItems: "center",
+                    justifyContent: "center",
+                    backgroundColor: "rgba(18,226,154,0.12)",
+                    borderWidth: 1.5,
+                    borderColor: "rgba(18,226,156,0.35)",
+                  }}
                 >
                   <Ionicons name="barbell-outline" size={22} color="#12E29A" />
                 </View>
@@ -333,24 +286,27 @@ export default function LiveWorkoutScreen() {
                 </View>
               </View>
 
-              {/* 🔁 En-tete du tableau */}
-                <View style={styles.tableHeader}>
-                  <Text style={[styles.th, styles.thIndex]}>#</Text>
-                  <Text style={styles.th}>KG</Text>
-                  <Text style={styles.th}>REPS</Text>
-                  <Text style={[styles.th, { textAlign: "right" }]}>FAIT</Text>
-                </View>
+              {/* 🔁 En-tête du tableau */}
+              <View style={styles.tableHeader}>
+                <Text style={[styles.th, styles.thIndex]}>#</Text>
+                <Text style={styles.th}>KG</Text>
+                <Text style={styles.th}>REPS</Text>
+                <Text style={[styles.th, { textAlign: "right" }]}>FAIT</Text>
+              </View>
 
-              {/* Ligne par serie */}
+              {/* Lignes par série */}
               {currentItem.sets.map((s, i) => {
+                // ✅ Handlers qui ciblent le setId avec patchSet()
                 const setReps = (delta: number) => {
                   const newReps = Math.max(0, (s.reps ?? 0) + delta);
-                  patchSetLocal(s.id!, {reps: newReps });
+                  // ⛔️ Avant: patchSetLocal(...) => patch items + debounce
+                  // ✅ Maintenant: PATCH direct du set
+                  patchSet(s.id!, { reps: newReps });
                 };
 
                 const setKg = (delta: number) => {
                   const newKg = Math.max(0, (s.weight ?? 0) + delta);
-                  patchSetLocal(s.id!, { weight: newKg});
+                  patchSet(s.id!, { weight: newKg });
                 };
 
                 return (
@@ -364,19 +320,19 @@ export default function LiveWorkoutScreen() {
                     <View style={styles.td}>
                       <View style={styles.stepper}>
                         <Pressable
-                        disabled={s.completed}
-                        onPress={() => setKg(-2.5)}
-                        style={styles.stepBtn}>
+                          disabled={s.completed}
+                          onPress={() => setKg(-2.5)}
+                          style={styles.stepBtn}>
                           <Ionicons name="remove" size={16} color="#7AD3FF" />
                         </Pressable>
 
-                        {/* valeur afficher */}
+                        {/* valeur affichée */}
                         <Text style={styles.stepVal}>{(s.weight ?? 0).toFixed(1)}</Text>
 
                         <Pressable
-                        disabled={s.completed}
-                        onPress={() => setKg(+2.5)}
-                        style={styles.stepBtn}
+                          disabled={s.completed}
+                          onPress={() => setKg(+2.5)}
+                          style={styles.stepBtn}
                         >
                           <Ionicons name="add" size={16} color="#7AD3FF" />
                         </Pressable>
@@ -387,18 +343,18 @@ export default function LiveWorkoutScreen() {
                     <View style={styles.td}>
                       <View style={styles.stepper}>
                         <Pressable
-                        disabled={s.completed}
-                        onPress={() => setReps(-1)}
-                        style={styles.stepBtn}
+                          disabled={s.completed}
+                          onPress={() => setReps(-1)}
+                          style={styles.stepBtn}
                         >
                           <Ionicons name="remove" size={16} color="#12E29A" />
                         </Pressable>
-                        {/* valeur afficher */}
+                        {/* valeur affichée */}
                         <Text style={styles.stepVal}>{s.reps ?? 0}</Text>
                         <Pressable
-                        disabled={s.completed}
-                        onPress={() => setReps(+1)}
-                        style={styles.stepBtn}
+                          disabled={s.completed}
+                          onPress={() => setReps(+1)}
+                          style={styles.stepBtn}
                         >
                           <Ionicons name="add" size={16} color='#12E29A' />
                         </Pressable>
@@ -408,16 +364,16 @@ export default function LiveWorkoutScreen() {
                     {/* FAIT */}
                     <View style={[styles.td, {alignItems: "flex-end" }]}>
                       <Pressable
-                      onPress={() => onCompleteSet(s.id!)}
-                      style={[
-                        styles.checkBtn,
-                        s.completed && { backgroundColor: "#12E29A", borderColor: "#12E29A" },
-                      ]}
+                        onPress={() => onCompleteSet(s.id!)}
+                        style={[
+                          styles.checkBtn,
+                          s.completed && { backgroundColor: "#12E29A", borderColor: "#12E29A" },
+                        ]}
                       >
                         <Ionicons
-                        name={s.completed ? "checkmark" : "ellipse-outline"}
-                        size={18}
-                        color={s.completed ? "#061018" : "#9FB0BD"} />
+                          name={s.completed ? "checkmark" : "ellipse-outline"}
+                          size={18}
+                          color={s.completed ? "#061018" : "#9FB0BD"} />
                       </Pressable>
                     </View>
                   </View>

@@ -9,6 +9,13 @@ export type WorkoutSet = {
   workoutItemId?: string;
 };
 
+export type WorkoutSetPatch = {
+  reps?: number;
+  weight?: number | null;
+  rest?: number | null;
+  rpe?: number | null;
+}
+
 export type WorkoutItem = {
   id?: string;
   order: number;
