@@ -15,6 +15,10 @@ export type CreateWorkoutInput = { //Ce que renvoie POST /workouts
     items?: WorkoutItem[];
 };
 
+export type PatchSerie = { reps?: number; weight?: number | null; rest?: number | null };
+export type PatchItem = { exerciseId?: string; order?: number; sets?: PatchSerie[] };
+export type UpdateWorkoutPatch = { items?: PatchItem[] };
+export type UpdateWorkoutBody = Partial<CreateWorkoutInput> | UpdateWorkoutPatch;
 
 export async function listWorkouts(params?: { from?: string; to?: string }): Promise<ListResponse> {
   //params peut contenir "from" et/ou "to". Coté back Nest, ca arrive sur findAll (from et to pour lister)
@@ -56,11 +60,11 @@ export async function createWorkout(input: CreateWorkoutInput) {
 /** Mise à jour d’une séance (PATCH /workouts/:id) */
 export async function updateWorkout(
   id: string,
-  patch: Partial<CreateWorkoutInput>
+  body: UpdateWorkoutBody
 ) {
   return http<Workout>(`/workouts/${id}`, {
     method: "PATCH",
-    body: patch,
+    body,
   });
 }
 
@@ -101,16 +105,11 @@ export async function addWorkoutItem(workoutId :string, input: NewWorkoutItemInp
   const w = await getWorkout(workoutId);
   //2) fabriquer l'item a partir de l'input
   const nextOrder = (w.items?.length ?? 0) + 1;
-  const newItem: WorkoutItem = {
+  const newItem: PatchItem = {
     exerciseId: input.exerciseId,
     order: nextOrder,
-    sets: [{ reps: input.reps, weight: input.weight, rest: input.rest } as WorkoutSet],
+    sets: [{ reps: input.reps, weight: input.weight, rest: input.rest }],
   };
-  //3) constuire le nouveau tableau items
-  const items = [...(w?.items ?? []), newItem];
-  console.log(items);
-  //4) PATCH /workouts/:id (http.ts)
-  const test = await updateWorkout(workoutId, { items });
-  console.log(test)
-  return getWorkout(workoutId);
+ await updateWorkout(workoutId, { items: [newItem] });
+ return getWorkout(workoutId);
 }

@@ -38,6 +38,34 @@ const dec = (v: number | null | undefined, step = 1, min = 0) =>
    📱 Écran
    ========================================================================= */
 export default function LiveWorkoutScreen() {
+  type PatchableSet = { reps?: number; weight?: number| null; rest?: number | null };
+  type PatchableItem ={ exerciseId?: string; order?: number; sets?: PatchableSet[] };
+
+  function stripForPatch(items: Workout["items"] | undefined | null): PatchableItem[] {
+    const safe: PatchableItem[] = [];
+    for (const it  of items ?? []) {
+      safe.push({
+        exerciseId: it.exerciseId,
+        order: typeof it.order === "number" ? it.order : undefined,
+        sets: (it.sets ?? []).map((s) => ({
+          reps: Number.isFinite(s.reps as any) ? (s.reps as number) : undefined,
+          weight:
+          typeof s.weight === "number"
+          ? (s.weight as number)
+          : s.weight === null
+          ? null
+          : undefined,
+          rest:
+          s.rest === null
+          ? undefined
+          :Number.isFinite(s.rest as any)
+          ? (s.rest as number)
+          : undefined,
+        })),
+      });
+    }
+    return safe;
+  }
   const { id } = useLocalSearchParams<{ id: string }>(); // id du workout dans l’URL
   const router = useRouter();
 
@@ -122,11 +150,12 @@ export default function LiveWorkoutScreen() {
         try {
           inflight.current = true;
           setSaving(true);
-          const payload = pendingPatchRef.current;
+          const raw = pendingPatchRef.current;
           pendingPatchRef.current = null;
+          const payload = { items: stripForPatch(raw?.items) };
 
-          console.log("📤 PATCH /workouts/:id", payload);
-          await updateWorkout(id, payload);
+          console.log("📤 PATCH /workouts/:id (sanitized)", payload);
+          await updateWorkout(id, payload as any);
           console.log("✅ Sauvegarde OK");
         } catch (e) {
           console.error("❌ Sauvegarde échouée", e);
