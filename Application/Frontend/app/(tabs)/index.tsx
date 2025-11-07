@@ -1,57 +1,83 @@
-import { StatusBar } from "expo-status-bar";
-import { Text, StyleSheet, Pressable, View, } from "react-native";
-import { SafeAreaView } from "react-native-safe-area-context";
-import { Link, useRouter } from "expo-router";
+// app/(tabs)/index.tsx
+import React, { useEffect, useState } from "react";
+import { ScrollView, View, Text, ActivityIndicator, Alert } from "react-native";
+import { MuscleHexagon, Workout } from "../components/MuscleHexagon";
+import { loadTokens } from "@/lib/tokenStorage"; // adapte le chemin si besoin
+
+const API_BASE = process.env.EXPO_PUBLIC_API_URL?.replace(/\/$/, "") || "";
 
 export default function HomeScreen() {
-  const router = useRouter();
+  const [workouts, setWorkouts] = useState<Workout[]>([]);
+  const [loading, setLoading] = useState(true);
+
+  useEffect(() => {
+    const load = async () => {
+      try {
+        const tokens = await loadTokens();
+        if (!tokens?.access) {
+          setLoading(false);
+          return;
+        }
+
+        const res = await fetch(`${API_BASE}/api/v1/workouts`, {
+          headers: {
+            Authorization: `Bearer ${tokens.access}`,
+          },
+        });
+
+        const data = await res.json();
+
+        if (!res.ok) {
+          console.log("workouts error", data);
+          Alert.alert("Erreur", data?.message || "Impossible de charger les entraînements");
+          setLoading(false);
+          return;
+        }
+
+        // d’après ton controller, ça renvoie { items, total }
+        const items = Array.isArray(data.items) ? data.items : [];
+
+        // on mappe au format attendu par le composant
+        const mapped: Workout[] = items.map((w: any) => ({
+          date: w.createdAt || w.date || new Date().toISOString(),
+          completed: !!w.finishedAt,
+          exercises: (w.items || []).map((it: any) => ({
+            name: it.exercise?.name || "Exercice",
+            sets: (it.sets || []).length || 1,
+          })),
+        }));
+
+        setWorkouts(mapped);
+      } catch (e) {
+        console.log(e);
+        Alert.alert("Erreur réseau", "Impossible de joindre le serveur");
+      } finally {
+        setLoading(false);
+      }
+    };
+
+    load();
+  }, []);
 
   return (
-    <SafeAreaView style={styles.container} edges={["top", "bottom"]}>
-      <StatusBar style="light" />
-      <Text style={styles.title}>LockFit</Text>
-      <Text style={styles.subtitle}>Ta clé pour la performance 👊</Text>
-
-      <View style={styles.buttons}>
-        {/* Link 1 */}
-          <Pressable style={styles.cta}
-          onPress={() => router.push("/auth/login")}
-          >
-            <Text style={styles.ctaText}>Connexion 🔗</Text>
-          </Pressable>
-
-
-        {/* Link 2 */}
-        <Link href="/auth/creation" asChild>
-          <Pressable style={styles.cta} accessibilityRole="button">
-            <Text style={styles.ctaText}>Créer un compte 🔐</Text>
-          </Pressable>
-        </Link>
+    <ScrollView
+      style={{ flex: 1, backgroundColor: "#0B0B1A" }}
+      contentContainerStyle={{ padding: 16, gap: 16, paddingBottom: 90 }}
+    >
+      <View>
+        <Text style={{ color: "white", fontSize: 26, fontWeight: "800" }}>
+          Dashboard
+        </Text>
+        <Text style={{ color: "rgba(255,255,255,0.4)", marginTop: 4 }}>
+          Vue d’ensemble de tes séances
+        </Text>
       </View>
-    </SafeAreaView>
+
+      {loading ? (
+        <ActivityIndicator color="#12E29A" />
+      ) : (
+        <MuscleHexagon workouts={workouts} />
+      )}
+    </ScrollView>
   );
 }
-
-const styles = StyleSheet.create({
-  container: {
-    flex: 1, padding: 16, justifyContent: "center", backgroundColor: "#0B0F13",
-  },
-  title: {
-    fontSize: 28, fontWeight: "700", color: "#12E29A", marginBottom: 6, textAlign: "center",
-  },
-  subtitle: {
-    fontSize: 17, color: "#98A2B3", marginBottom: 20, textAlign: "center",
-  },
-  buttons: {
-    alignSelf: "stretch",
-    paddingHorizontal: 16,
-    gap: 12,                // espace vertical entre les boutons
-  },
-  cta: {
-    backgroundColor: "#12E29A",
-    paddingVertical: 14, paddingHorizontal: 16,
-    borderRadius: 12,
-    alignItems: "center",   // centre le texte dans le bouton
-  },
-  ctaText: { color: "#061018", fontWeight: "700" },
-});
