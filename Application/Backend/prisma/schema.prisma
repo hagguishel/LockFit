@@ -16,6 +16,8 @@ model Workout {
   createdAt    DateTime       @default(now())
   updatedAt    DateTime       @updatedAt
   finishedAt   DateTime?
+  isTemplate   Boolean        @default(false)
+  scheduledFor DateTime?
   PlanningJour PlanningJour[]
   items        WorkoutItem[]
 }
@@ -55,11 +57,11 @@ model Utilisateur {
   mfaSecret         String?
   createdAt         DateTime           @default(now())
   updatedAt         DateTime           @updatedAt
-  MfaChallenge      MfaChallenge[]
-  refreshTokens     RefreshToken[]
-  emailVerification EmailVerification?
-  passwordResets    PasswordReset[]
   emailVerifiedAt   DateTime?
+  emailVerification EmailVerification?
+  MfaChallenge      MfaChallenge[]
+  passwordResets    PasswordReset[]
+  refreshTokens     RefreshToken[]
 }
 
 model RefreshToken {
@@ -138,16 +140,11 @@ model WorkoutSet {
   weight        Float?
   rest          Int?
   rpe           Float?
-  completed     Boolean    @default(false)
   workoutItemId String
+  completed     Boolean     @default(false)
   item          WorkoutItem @relation(fields: [workoutItemId], references: [id], onDelete: Cascade)
 
   @@index([workoutItemId])
-}
-
-enum PlanningJourStatus {
-  PLANNED
-  DONE
 }
 
 model EmailVerification {
@@ -167,4 +164,9 @@ model PasswordReset {
   used      Boolean     @default(false)
   createdAt DateTime    @default(now())
   user      Utilisateur @relation(fields: [userId], references: [id], onDelete: Cascade)
+}
+
+enum PlanningJourStatus {
+  PLANNED
+  DONE
 }
