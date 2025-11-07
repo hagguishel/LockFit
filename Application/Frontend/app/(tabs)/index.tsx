@@ -1,7 +1,7 @@
 // app/(tabs)/index.tsx
 import React, { useEffect, useState } from "react";
 import { ScrollView, View, Text, ActivityIndicator, Alert } from "react-native";
-import { MuscleHexagon, Workout } from "../components/MuscleHexagon";
+import { MuscleHexagon, Workout } from "../../src/components/MuscleHexagon";
 import { loadTokens } from "@/lib/tokenStorage"; // adapte le chemin si besoin
 
 const API_BASE = process.env.EXPO_PUBLIC_API_URL?.replace(/\/$/, "") || "";
