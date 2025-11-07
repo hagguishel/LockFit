@@ -40,8 +40,9 @@ export default function MfaScreen() {
       return;
     }
     // 1) On récupère le ticket de tempSessionId
-    const ticket =
-      (typeof tempSessionId === "string" && tempSessionId) || "";
+    const ticket = Array.isArray(tempSessionId) 
+      ? tempSessionId[0] 
+      : (tempSessionId || "");
 
     if (!ticket) {
       Alert.alert("Erreur", "Aucun ticket...");
