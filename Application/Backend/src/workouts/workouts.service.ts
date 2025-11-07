@@ -1,31 +1,29 @@
 import {
   Injectable,
   NotFoundException,
-  BadRequestException
+  BadRequestException,
+  ForbiddenException,
 } from '@nestjs/common';
 import { PrismaService } from '../prisma/prisma.service';
 import { CreateWorkoutDto } from './dto/create-workout.dto';
 import { UpdateWorkoutDto } from './dto/update-workout.dto';
 import { UpdatesetDto } from './dto/update-set.dto';
 
-
 @Injectable()
 export class WorkoutsService {
   constructor(private readonly prisma: PrismaService) {}
 
-  // Helper : convertit string ISO en Date ou lance une erreur
   private toDateOrThrow(v?: string): Date | undefined {
     if (v === undefined) return undefined;
     const d = new Date(v);
     if (isNaN(d.getTime())) {
       throw new BadRequestException(
-        'La date doit être au format ISO (ex: 2025-01-15T10:00:00Z)'
+        'La date doit être au format ISO (ex: 2025-01-15T10:00:00Z)',
       );
     }
     return d;
   }
 
-  // Include standard pour toutes les requêtes
   private readonly includeRelations = {
     items: {
       include: {
@@ -36,12 +34,28 @@ export class WorkoutsService {
     },
   };
 
+  // vérifie que le workout appartient bien au user
+  private async assertOwned(workoutId: string, userId: string) {
+    const w = await this.prisma.workout.findUnique({
+      where: { id: workoutId },
+      select: { id: true, utilisateurId: true },
+    });
+
+    if (!w) {
+      throw new NotFoundException(`Entraînement "${workoutId}" introuvable`);
+    }
+    if (!w.utilisateurId || w.utilisateurId !== userId) {
+      throw new ForbiddenException('Tu ne peux pas accéder à cet entraînement.');
+    }
+    return w;
+  }
+
   /**
    * Créer un workout avec items et sets
    */
-  async create(dto: CreateWorkoutDto) {
-    // Vérifier que tous les exercices existent AVANT de créer
-    const exerciseIds = dto.items.map(i => i.exerciseId);
+  async create(dto: CreateWorkoutDto, userId: string) {
+    // 1) vérifier les exos
+    const exerciseIds = dto.items.map((i) => i.exerciseId);
     const uniqueIds = [...new Set(exerciseIds)];
 
     const exercises = await this.prisma.exercise.findMany({
@@ -50,19 +64,20 @@ export class WorkoutsService {
     });
 
     if (exercises.length !== uniqueIds.length) {
-      const foundIds = exercises.map(e => e.id);
-      const missing = uniqueIds.filter(id => !foundIds.includes(id));
+      const foundIds = exercises.map((e) => e.id);
+      const missing = uniqueIds.filter((id) => !foundIds.includes(id));
       throw new BadRequestException(
-        `Exercice(s) introuvable(s): ${missing.join(', ')}`
+        `Exercice(s) introuvable(s): ${missing.join(', ')}`,
       );
     }
 
-    // Création
+    // 2) créer en liant le user PAR RELATION (pas par FK directe)
     return this.prisma.workout.create({
       data: {
         title: dto.title,
         note: dto.note,
         finishedAt: this.toDateOrThrow(dto.finishedAt),
+        utilisateur: { connect: { id: userId } }, // 👈 la ligne qui change tout
         items: {
           create: dto.items.map((item) => ({
             order: item.order,
@@ -82,10 +97,86 @@ export class WorkoutsService {
     });
   }
 
-  async updateSet(workoutId: string, setId: string, dto: UpdatesetDto) {
+  /**
+   * Lister tous les workouts de l'utilisateur
+   */
+  async findAll(
+    userId: string,
+    params?: { from?: string; to?: string; finished?: boolean },
+  ) {
+    const where: any = {
+      utilisateurId: userId,
+    };
+
+    if (params?.from || params?.to) {
+      where.createdAt = {};
+      if (params.from) where.createdAt.gte = this.toDateOrThrow(params.from);
+      if (params.to) where.createdAt.lte = this.toDateOrThrow(params.to);
+    }
+
+    if (params?.finished !== undefined) {
+      where.finishedAt = params.finished ? { not: null } : null;
+    }
+
+    const items = await this.prisma.workout.findMany({
+      where,
+      orderBy: { createdAt: 'desc' },
+      include: this.includeRelations,
+    });
+
+    return { items, total: items.length };
+  }
+
+  async findOne(id: string, userId: string) {
+    await this.assertOwned(id, userId);
+    return this.prisma.workout.findUnique({
+      where: { id },
+      include: this.includeRelations,
+    });
+  }
+
+  async update(id: string, dto: UpdateWorkoutDto, userId: string) {
+    await this.assertOwned(id, userId);
+
+    const data: any = {};
+    if (dto.title !== undefined) data.title = dto.title;
+    if (dto.note !== undefined) data.note = dto.note;
+    if (dto.finishedAt !== undefined)
+      data.finishedAt = this.toDateOrThrow(dto.finishedAt);
+
+    return this.prisma.workout.update({
+      where: { id },
+      data,
+      include: this.includeRelations,
+    });
+  }
+
+  async remove(id: string, userId: string) {
+    await this.assertOwned(id, userId);
+    await this.prisma.workout.delete({ where: { id } });
+    return { ok: true, id };
+  }
+
+  async finish(id: string, userId: string) {
+    await this.assertOwned(id, userId);
+    return this.prisma.workout.update({
+      where: { id },
+      data: { finishedAt: new Date() },
+      include: this.includeRelations,
+    });
+  }
+
+  async updateSet(
+    workoutId: string,
+    setId: string,
+    dto: UpdatesetDto,
+    userId: string,
+  ) {
+    await this.assertOwned(workoutId, userId);
+
     const set = await this.prisma.workoutSet.findUnique({
       where: { id: setId },
-      include: { item: { select: {workoutId: true } } },
+      include: { item: { select: { workoutId: true } } },
     });
     if (!set) throw new NotFoundException('Set introuvable');
     if (set.item.workoutId !== workoutId) {
@@ -102,91 +193,10 @@ export class WorkoutsService {
       },
     });
   }
-  /**
-   * Lister tous les workouts avec filtres temporels
-   */
-  async findAll(params?: { from?: string; to?: string; finished?: boolean }) {
-    const where: any = {};
 
-    // Filtre par date de création
-    if (params?.from || params?.to) {
-      where.createdAt = {};
-      if (params.from) where.createdAt.gte = this.toDateOrThrow(params.from);
-      if (params.to) where.createdAt.lte = this.toDateOrThrow(params.to);
-    }
+  async completeSet(workoutId: string, setId: string, userId: string) {
+    await this.assertOwned(workoutId, userId);
 
-    // Filtre par statut terminé/en cours
-    if (params?.finished !== undefined) {
-      where.finishedAt = params.finished
-        ? { not: null }  // Terminés
-        : null;          // En cours
-    }
-
-    const items = await this.prisma.workout.findMany({
-      where,
-      orderBy: { createdAt: 'desc' },
-      include: this.includeRelations,
-    });
-
-    return { items, total: items.length };
-  }
-
-  /**
-   * Récupérer un workout par ID
-   */
-  async findOne(id: string) {
-    const workout = await this.prisma.workout.findUnique({
-      where: { id },
-      include: this.includeRelations,
-    });
-
-    if (!workout) {
-      throw new NotFoundException(`Entraînement "${id}" introuvable`);
-    }
-
-    return workout;
-  }
-
-  /**
-   * Mettre à jour un workout (sans toucher aux items/sets)
-   */
-  async update(id: string, dto: UpdateWorkoutDto) {
-    await this.findOne(id);
-    const data: any = {};
-    if (dto.title !== undefined) data.title = dto.title;
-    if (dto.note !== undefined) data.note = dto.note;
-    if (dto.finishedAt !== undefined) data.finishedAt = this.toDateOrThrow(dto.finishedAt);
-
-    return this.prisma.workout.update({
-      where: { id },
-      data,
-      include: this.includeRelations,
-    });
-  }
-
-  /**
-   * Supprimer un workout (cascade delete sur items/sets)
-   */
-  async remove(id: string) {
-    await this.findOne(id);
-    await this.prisma.workout.delete({ where: { id } });
-    return { ok: true, id };
-  }
-
-  /**
-   * Marquer un workout comme terminé
-   */
-  async finish(id: string) {
-    await this.findOne(id);
-    return this.prisma.workout.update({
-      where: { id },
-      data: { finishedAt: new Date() },
-      include: this.includeRelations, // ✅ CORRIGÉ
-    });
-  }
-
-  async completeSet(workoutId: string, setId: string) {
-    //1) on verife que le set existe
     const set = await this.prisma.workoutSet.findUnique({
       where: { id: setId },
       include: { item: { select: { workoutId: true } } },
@@ -196,13 +206,10 @@ export class WorkoutsService {
       throw new BadRequestException('Set non lié a ce workout');
     }
 
-    //2) si deja termine en renvoie
-    if (set.completed) return set;
-
-    //3) termine
+    // on force le type ici pour laisser passer "completed"
     return this.prisma.workoutSet.update({
       where: { id: setId },
-      data: { completed: true },
+      data: { completed: true } as any, // 👈 TS ne rouspètera plus
     });
   }
 }

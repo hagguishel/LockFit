@@ -1,36 +1,64 @@
-// Fichier qui reçoit les appels HTTP, vérifie la forme via DTO, puis délègue au service (DB)
-import { Controller, Get, Post, Body, Param, Patch, Delete, Query, HttpCode, HttpStatus } from '@nestjs/common';   // Décorateurs Nest pour routes & corps de requête
-import { CreateWorkoutDto } from './dto/create-workout.dto';    // Contrat d'entrée pour créer un workout
-import { WorkoutsService } from './workouts.service';           // Service qui parlera à la base
+// src/workouts/workouts.controller.ts
+import {
+  Controller,
+  Get,
+  Post,
+  Body,
+  Param,
+  Patch,
+  Delete,
+  Query,
+  HttpCode,
+  HttpStatus,
+  Req,
+  UseGuards,
+} from '@nestjs/common';
+import { Request } from 'express';
+import { CreateWorkoutDto } from './dto/create-workout.dto';
+import { WorkoutsService } from './workouts.service';
 import { UpdateWorkoutDto } from './dto/update-workout.dto';
 import { UpdatesetDto } from './dto/update-set.dto';
-@Controller(['workouts', 'entrainements'])                        // Toutes les routes ici commencent par /workouts
-export class WorkoutsController {                                // Contrôleur = “standardiste” HTTP
-  constructor(private readonly service: WorkoutsService) {}      // Injection du service (logique & DB)
+import { AuthGuard } from '@nestjs/passport';
 
-  @Post()                                                        // POST /api/v1/workouts
-  create(@Body() dto: CreateWorkoutDto) {                    // Lit & valide le JSON contre le DTO
-    return this.service.create(dto);                             // Délègue la création au service
+@Controller(['workouts', 'entrainements'])
+@UseGuards(AuthGuard('jwt')) // 🔐 tout ce contrôleur nécessite d’être connecté
+export class WorkoutsController {
+  constructor(private readonly service: WorkoutsService) {}
+
+  @Post()
+  create(@Body() dto: CreateWorkoutDto, @Req() req: Request) {
+    const userId = (req.user as any).sub || (req.user as any).id;
+    return this.service.create(dto, userId);
   }
 
-  @Get()                                                                 // GET /api/v1/workouts
-  findAll(@Query('from') from?: string, @Query('to') to?: string, @Query('finished') finished?: string,) {     // Passe les éventuels filtres de date au service
-      const f =
-    finished === undefined
-      ? undefined
-      : finished.toLowerCase() === 'true';
-  return this.service.findAll({ from, to, finished: f });                         // Délègue la lecture au service et renvoie { items, total }
+  @Get()
+  findAll(
+    @Req() req: Request,
+    @Query('from') from?: string,
+    @Query('to') to?: string,
+    @Query('finished') finished?: string,
+  ) {
+    const userId = (req.user as any).sub || (req.user as any).id;
+    const f =
+      finished === undefined ? undefined : finished.toLowerCase() === 'true';
+
+    return this.service.findAll(userId, { from, to, finished: f });
   }
 
-  //GET /api/v1/workouts/:id - détail d'une séance, @Param ('id') lit le segment url
   @Get(':id')
-  findOne(@Param('id') id: string) {
-    return this.service.findOne(id); //404 automatique si introuvable
+  findOne(@Param('id') id: string, @Req() req: Request) {
+    const userId = (req.user as any).sub || (req.user as any).id;
+    return this.service.findOne(id, userId);
   }
-  // PATCH /api/v1/workouts/:id — mise à jour partielle
+
   @Patch(':id')
-  update(@Param('id') id: string, @Body() dto: UpdateWorkoutDto) {
-    return this.service.update(id, dto);
+  update(
+    @Param('id') id: string,
+    @Body() dto: UpdateWorkoutDto,
+    @Req() req: Request,
+  ) {
+    const userId = (req.user as any).sub || (req.user as any).id;
+    return this.service.update(id, dto, userId);
   }
 
   @Patch(':id/sets/:setId/complete')
@@ -38,9 +66,10 @@ export class WorkoutsController {                                // Contrôleur 
   completeSet(
     @Param('id') workoutId: string,
     @Param('setId') setId: string,
+    @Req() req: Request,
   ) {
-    console.log('🛠️ PATCH /workouts/%s/sets/%s/complete', workoutId, setId);
-    return this.service.completeSet(workoutId, setId);
+    const userId = (req.user as any).sub || (req.user as any).id;
+    return this.service.completeSet(workoutId, setId, userId);
   }
 
   @Patch(':id/sets/:setId')
@@ -48,18 +77,22 @@ export class WorkoutsController {                                // Contrôleur 
     @Param('id') workoutId: string,
     @Param('setId') setId: string,
     @Body() dto: UpdatesetDto,
+    @Req() req: Request,
   ) {
-    return this.service.updateSet(workoutId, setId, dto);
+    const userId = (req.user as any).sub || (req.user as any).id;
+    return this.service.updateSet(workoutId, setId, dto, userId);
   }
-  // DELETE /api/v1/workouts/:id — supprime une séance
+
   @Delete(':id')
-  remove(@Param('id') id: string) {
-    return this.service.remove(id)
+  remove(@Param('id') id: string, @Req() req: Request) {
+    const userId = (req.user as any).sub || (req.user as any).id;
+    return this.service.remove(id, userId);
   }
-  // POST /api/v1/workouts/:id/finish — marque comme terminée (finishedAt = maintenant)
+
   @Post(':id/finish')
   @HttpCode(HttpStatus.OK)
-  finish(@Param('id') id: string) {
-    return this.service.finish(id);
+  finish(@Param('id') id: string, @Req() req: Request) {
+    const userId = (req.user as any).sub || (req.user as any).id;
+    return this.service.finish(id, userId);
   }
 }
