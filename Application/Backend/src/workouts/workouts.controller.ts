@@ -4,6 +4,7 @@ import { CreateWorkoutDto } from './dto/create-workout.dto';    // Contrat d'ent
 import { WorkoutsService } from './workouts.service';           // Service qui parlera à la base
 import { UpdateWorkoutDto } from './dto/update-workout.dto';
 import { UpdatesetDto } from './dto/update-set.dto';
+
 @Controller(['workouts', 'entrainements'])                        // Toutes les routes ici commencent par /workouts
 export class WorkoutsController {                                // Contrôleur = “standardiste” HTTP
   constructor(private readonly service: WorkoutsService) {}      // Injection du service (logique & DB)
@@ -21,7 +22,13 @@ export class WorkoutsController {                                // Contrôleur 
       : finished.toLowerCase() === 'true';
   return this.service.findAll({ from, to, finished: f });                         // Délègue la lecture au service et renvoie { items, total }
   }
-
+    @Get('scheduled')
+  listScheduled(
+    @Query('from') from?: string,
+    @Query('to') to?: string,
+  ) {
+    return this.service.listScheduled({ from, to });
+  }
   //GET /api/v1/workouts/:id - détail d'une séance, @Param ('id') lit le segment url
   @Get(':id')
   findOne(@Param('id') id: string) {
@@ -62,4 +69,18 @@ export class WorkoutsController {                                // Contrôleur 
   finish(@Param('id') id: string) {
     return this.service.finish(id);
   }
+
+  @Post(':id/duplicate')
+  duplicate(@Param('id') id: string) {
+    return this.service.duplicateWorkout(id);
+  }
+
+  @Post(':id/schedule')
+  schedule(
+    @Param('id') id: string,
+    @Body('scheduledFor') scheduledFor: string,
+  ) {
+    return this.service.scheduleWorkout(id, scheduledFor);
+  }
+
 }
