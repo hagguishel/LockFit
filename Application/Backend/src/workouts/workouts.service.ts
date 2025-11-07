@@ -9,6 +9,8 @@ import { CreateWorkoutDto } from './dto/create-workout.dto';
 import { UpdateWorkoutDto } from './dto/update-workout.dto';
 import { UpdatesetDto } from './dto/update-set.dto';
 
+
+
 @Injectable()
 export class WorkoutsService {
   constructor(private readonly prisma: PrismaService) {}
@@ -209,7 +211,87 @@ export class WorkoutsService {
     // on force le type ici pour laisser passer "completed"
     return this.prisma.workoutSet.update({
       where: { id: setId },
-      data: { completed: true } as any, // 👈 TS ne rouspètera plus
+      data: { completed: true },
     });
   }
+
+  // dupliquer un workout (copier coller sans jamais completed)
+  async duplicateWorkout(id: string) {
+    const src = await this.prisma.workout.findUnique({
+      where: { id },
+      include: { items: { include: { sets: true } } },
+    });
+    if (!src) throw new NotFoundException('Workout introuvable');
+
+    const created = await this.prisma.$transaction(async (tx) => {
+      const newWork = await tx.workout.create({
+        data: {
+          title: src.title,
+          note: src.note,
+          isTemplate: false,
+          scheduledFor: null,
+          finishedAt: null,
+        },
+      });
+
+      for (const it of src.items) {
+        const newItem = await tx.workoutItem.create({
+          data: {
+            order: it.order,
+            workoutId: newWork.id,
+            exerciseId: it.exerciseId,
+          },
+        });
+        for (const s of it.sets) {
+          await tx.workoutSet.create({
+            data: {
+              reps: s.reps,
+              weight: s.weight,
+              rest: s.rest,
+              rpe: s.rpe,
+              workoutItemId: newItem.id,
+              completed: false,
+            },
+          });
+        }
+      }
+      return newWork;
+    });
+    return this.findOne(created.id);
+  }
+  // Planifier un workout: scheduledFor = date ISO
+  async scheduleWorkout(id: string, scheduledForISO: string) {
+    const w = await this.prisma.workout.findUnique({ where: { id } });
+    if (!w) throw new NotFoundException('Workout introuvable');
+
+    const when = this.toDateOrThrow(scheduledForISO);
+    return this.prisma.workout.update({
+      where: { id },
+      data: { scheduledFor: when },
+      include: this.includeRelations,
+    });
+  }
+  // Lister leq workout planifier entre from/to (ISO)
+  async listScheduled(params?: {from?: string; to?: string }) {
+    const where: any = { scheduledFor: { not: null } };
+
+    if (params?.from || params?.to) {
+      where.scheduledFor = {
+      ...(params.from ? { gte: this.toDateOrThrow(params.from) } : {}),
+      ...(params.to ? { lte: this.toDateOrThrow(params.to) } : {}),
+    };
+  }
+
+  return this.prisma.workout.findMany({
+    where,
+    orderBy: {scheduledFor: 'asc' },
+    select: {
+      id: true,
+      title: true,
+      scheduledFor: true,
+      finishedAt: true,
+      isTemplate: true,
+    },
+  });
+}
 }

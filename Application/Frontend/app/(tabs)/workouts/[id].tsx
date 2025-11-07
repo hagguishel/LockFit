@@ -1,5 +1,7 @@
 // app/(tabs)/workouts/[id].tsx
 import React, { useCallback, useEffect, useMemo, useState } from "react";
+import { scheduleWorkout, listScheduled } from "@/lib/workouts";
+import DateTimePicker from "@react-native-community/datetimepicker";
 import { SafeAreaView } from "react-native-safe-area-context";
 import {
   ActivityIndicator,
@@ -24,8 +26,45 @@ export default function WorkoutDetailScreen() {
   const [workout, setWorkout] = useState<Workout | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  const [showPicker, setShowPicker] = useState(false);
+  const [planningLoading, setPlanningLoading] = useState(false);
+  const [planningDays, setPlanningDays] = useState(0);
+  const [completedDays, setCompletedDays] = useState(0);
 
   const tabBarHeight = useBottomTabBarHeight();
+
+  function startOfWeek(d = new Date()) {
+    const x = new Date(d);
+    const day = (x.getDay() + 6) % 7;
+    x.setHours(0,0,0,0);
+    x.setDate(x.getDate() - day);
+    return x;
+  }
+
+  function endOfWeek(d = new Date()) {
+    const x = startOfWeek(d);
+    x.setDate(x.getDate() + 6);
+    x.setHours(23,59,59,999);
+    return x;
+  }
+
+  const loadWeekPlanning = useCallback(async () => {
+    try {
+      const from = startOfWeek();
+      from.setUTCHours(0, 0, 0, 0);
+      const to = endOfWeek();
+      to.setUTCHours(23, 59, 59, 999);
+      const items = await listScheduled(from.toISOString(), to.toISOString());
+
+      const arr = items ?? [];
+
+      const uniqueDays = new Set(arr.map(i => (i.scheduledFor ?? "").slice(0, 10)));
+
+      setPlanningDays(uniqueDays.size);
+      const done = arr.filter(i => i.finishedAt && i.scheduledFor).length;
+      setCompletedDays(done);
+    } catch {}
+  }, []);
 
   // --- fetch
   const load = useCallback(async () => {
@@ -44,7 +83,8 @@ export default function WorkoutDetailScreen() {
 
   useEffect(() => {
     load();
-  }, [load]);
+    loadWeekPlanning();
+  }, [load, loadWeekPlanning]);
 
   // --- marquer terminé
   const markFinished = useCallback(async () => {
@@ -52,6 +92,7 @@ export default function WorkoutDetailScreen() {
     try {
       await finishWorkout(workout.id);
       setWorkout({ ...workout, finishedAt: new Date().toISOString() });
+      await loadWeekPlanning();
     } catch (err) {
       alert("Erreur : impossible de marquer la séance comme terminée");
     }
@@ -184,6 +225,9 @@ export default function WorkoutDetailScreen() {
             </View>
           </View>
         </BlurView>
+          <Text style={styles.sectionTitle}>
+            Cette semaine : {completedDays}/{planningDays} jours complétés
+          </Text>
 
         {/* titre section */}
         <Text style={styles.sectionTitle}>Liste des exercices</Text>
@@ -212,7 +256,12 @@ export default function WorkoutDetailScreen() {
           {/* Ouvre le Live */}
             <Pressable
              style={styles.primaryBtn}
-              onPress={() => router.push(`/workouts/live/${workout.id}`)}
+              onPress={() =>
+                router.push({
+                  pathname: "/workouts/workoutlive",
+                params: { id: workout.id },
+              })
+            }
               >
               <Ionicons
                 name="play"
@@ -221,6 +270,15 @@ export default function WorkoutDetailScreen() {
                 style={{ marginRight: 6 }}
               />
               <Text style={styles.primaryBtnText}>Commencer la séance</Text>
+            </Pressable>
+            <Pressable
+            style={[styles.secondaryBtn, planningLoading && { opacity: 0.5}]}
+            disabled={planningLoading}
+            onPress={() => setShowPicker(true)}
+            >
+              <Text style={styles.secondaryBtnText}>
+                {planningDays > 0 ? "Replanifier" : "Planifier"}
+              </Text>
             </Pressable>
 
             {/* Marquer comme terminee */}
@@ -238,6 +296,28 @@ export default function WorkoutDetailScreen() {
           </View>
         )}
       </View>
+              {showPicker && (
+          <DateTimePicker
+          value={new Date()}
+          mode="date"
+          onChange={async (_event, date) =>{
+            setShowPicker(false);
+            if (!date || !workout) return;
+            try {
+              setPlanningLoading(true);
+
+              date.setUTCHours(0, 0, 0, 0);
+              const iso = date.toISOString();
+              await scheduleWorkout(workout.id, iso);
+              await loadWeekPlanning();
+            } catch {
+              alert("impossible de planifier la scéance.");
+            } finally {
+              setPlanningLoading(false);
+            }
+          }}
+          />
+        )}
     </SafeAreaView>
   );
 }

@@ -44,7 +44,14 @@ export class WorkoutsController {
 
     return this.service.findAll(userId, { from, to, finished: f });
   }
-
+    @Get('scheduled')
+  listScheduled(
+    @Query('from') from?: string,
+    @Query('to') to?: string,
+  ) {
+    return this.service.listScheduled({ from, to });
+  }
+  //GET /api/v1/workouts/:id - détail d'une séance, @Param ('id') lit le segment url
   @Get(':id')
   findOne(@Param('id') id: string, @Req() req: Request) {
     const userId = (req.user as any).sub || (req.user as any).id;
@@ -95,4 +102,18 @@ export class WorkoutsController {
     const userId = (req.user as any).sub || (req.user as any).id;
     return this.service.finish(id, userId);
   }
+
+  @Post(':id/duplicate')
+  duplicate(@Param('id') id: string) {
+    return this.service.duplicateWorkout(id);
+  }
+
+  @Post(':id/schedule')
+  schedule(
+    @Param('id') id: string,
+    @Body('scheduledFor') scheduledFor: string,
+  ) {
+    return this.service.scheduleWorkout(id, scheduledFor);
+  }
+
 }
