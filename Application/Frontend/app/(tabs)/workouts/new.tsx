@@ -20,23 +20,21 @@ import { BlurView } from "expo-blur";
 import { useBottomTabBarHeight } from "@react-navigation/bottom-tabs";
 import { Ionicons } from "@expo/vector-icons";
 import { createWorkout } from "@/lib/workouts";
-import {  type ExerciseDef } from "@/lib/exercises";
+import { type ExerciseDef } from "@/lib/exercises";
 
 type DraftExercice = ExerciseDef & {
   nbSeries: number;
   repsCibles: number;
-  poidsCibles:number;
+  poidsCibles: number;
 };
 
-const clamp = (v: number, min: number, max: number) => Math.max(min, Math.min(max, v));
-
-
+const clamp = (v: number, min: number, max: number) =>
+  Math.max(min, Math.min(max, v));
 
 export default function NewWorkoutScreen() {
   const router = useRouter();
   const tabBarHeight = useBottomTabBarHeight();
 
-  // si on revient de /exercises?mode=pick
   const params = useLocalSearchParams<{
     pickedId?: string;
     pickedName?: string;
@@ -48,8 +46,7 @@ export default function NewWorkoutScreen() {
   const [exercises, setExercises] = React.useState<DraftExercice[]>([]);
   const [saving, setSaving] = React.useState(false);
 
-  // quand on revient de la lib d'exos avec un choix
-
+  // 1) quand on revient avec la liste "current" → on REMPLACE le state
   React.useEffect(() => {
     if (params.current) {
       try {
@@ -67,16 +64,16 @@ export default function NewWorkoutScreen() {
     }
   }, [params.current]);
 
+  // 2) quand on revient avec un exo choisi → on l’ajoute seulement s’il n’est pas déjà là
   React.useEffect(() => {
     if (params.pickedId && params.pickedName) {
       const slug =
-      params.pickedName
-      ?.toLowerCase()
-      .replace(/\s+/g, "-")
-      .replace(/[^a-z0-9-]/g, "") ?? "";
+        params.pickedName
+          ?.toLowerCase()
+          .replace(/\s+/g, "-")
+          .replace(/[^a-z0-9-]/g, "") ?? "";
 
       const newExercise: DraftExercice = {
-
         id: params.pickedId,
         name: params.pickedName,
         slug,
@@ -85,16 +82,21 @@ export default function NewWorkoutScreen() {
         repsCibles: 10,
         poidsCibles: 0,
       };
-      setExercises((curr) => [...curr, newExercise]);
+
+      setExercises((curr) => {
+        // 👇 si on a déjà cet exo, on ne le remet pas
+        if (curr.some((ex) => ex.id === params.pickedId)) {
+          return curr;
+        }
+        return [...curr, newExercise];
+      });
     }
   }, [params.pickedId, params.pickedName, params.pickedPrimaryMuscle]);
 
-  // supprimer un exo du brouillon
   function handleRemoveExercise(id: string) {
     setExercises((curr) => curr.filter((e) => e.id !== id));
   }
 
-  // créer la séance → POST /workouts
   async function handleCreate() {
     const trimmed = title.trim();
 
@@ -106,7 +108,7 @@ export default function NewWorkoutScreen() {
     if (exercises.length === 0) {
       Alert.alert(
         "Aucun exercice",
-        "Ajoute au moins un exercice avant de créer la séance."
+        "Ajoute au moins un exercice avant de créer la séance.",
       );
       return;
     }
@@ -133,11 +135,8 @@ export default function NewWorkoutScreen() {
         return;
       }
 
-      // reset
       setTitle("");
       setExercises([]);
-
-      // aller sur le détail
       router.replace(`/workouts/${w.id}`);
     } catch (e: any) {
       Alert.alert("Erreur", e?.message || "Impossible de créer la séance.");
@@ -147,31 +146,31 @@ export default function NewWorkoutScreen() {
   }
 
   function Stepper({
-  value,
-  onInc,
-  onDec,
-  disabled,
-} : {
-  value: string | number;
-  onInc: () => void;
-  onDec: () => void;
-  disabled?: boolean;
-}) {
-  return (
-    <View style={styles.stepper}>
-      <Pressable disabled={disabled} onPress={onDec} style={styles.stepBtn}>
-        <Ionicons name="remove" size={16} color="#7AD3FF" />
-      </Pressable>
-      <Text style={styles.stepVal}>{value}</Text>
-      <Pressable disabled={disabled} onPress={onInc} style={styles.stepBtn}>
-        <Ionicons name="add" size={16} color="#7AD3FF" />
-      </Pressable>
-    </View>
-  )
-}
-  // rendu d'un exo dans le brouillon
+    value,
+    onInc,
+    onDec,
+    disabled,
+  }: {
+    value: string | number;
+    onInc: () => void;
+    onDec: () => void;
+    disabled?: boolean;
+  }) {
+    return (
+      <View style={styles.stepper}>
+        <Pressable disabled={disabled} onPress={onDec} style={styles.stepBtn}>
+          <Ionicons name="remove" size={16} color="#7AD3FF" />
+        </Pressable>
+        <Text style={styles.stepVal}>{value}</Text>
+        <Pressable disabled={disabled} onPress={onInc} style={styles.stepBtn}>
+          <Ionicons name="add" size={16} color="#7AD3FF" />
+        </Pressable>
+      </View>
+    );
+  }
+
   function renderExerciseRow({
-     item,
+    item,
     index,
   }: {
     item: DraftExercice;
@@ -180,38 +179,50 @@ export default function NewWorkoutScreen() {
     const onIncSeries = () =>
       setExercises((list) =>
         list.map((ex) =>
-          ex.id === item.id ? { ...ex, nbSeries: clamp(ex.nbSeries + 1, 1, 20 ) } : ex
-        )
+          ex.id === item.id
+            ? { ...ex, nbSeries: clamp(ex.nbSeries + 1, 1, 20) }
+            : ex,
+        ),
       );
     const onDecSeries = () =>
       setExercises((list) =>
         list.map((ex) =>
-          ex.id === item.id ? { ...ex, nbSeries: clamp(ex.nbSeries - 1, 1, 20 ) } : ex
-        )
+          ex.id === item.id
+            ? { ...ex, nbSeries: clamp(ex.nbSeries - 1, 1, 20) }
+            : ex,
+        ),
       );
     const onIncReps = () =>
       setExercises((list) =>
         list.map((ex) =>
-          ex.id === item.id ? { ...ex, repsCibles: clamp(ex.repsCibles + 1, 1, 50 ) } : ex
-        )
+          ex.id === item.id
+            ? { ...ex, repsCibles: clamp(ex.repsCibles + 1, 1, 50) }
+            : ex,
+        ),
       );
     const onDecReps = () =>
       setExercises((list) =>
         list.map((ex) =>
-          ex.id === item.id ? { ...ex, repsCibles: clamp(ex.repsCibles - 1, 1, 50 ) } : ex
-        )
+          ex.id === item.id
+            ? { ...ex, repsCibles: clamp(ex.repsCibles - 1, 1, 50) }
+            : ex,
+        ),
       );
     const onIncKg = () =>
       setExercises((list) =>
         list.map((ex) =>
-        ex.id === item.id ? { ...ex, poidsCibles: clamp(ex.poidsCibles + 2.5, 0, 999 ) } : ex
-        )
+          ex.id === item.id
+            ? { ...ex, poidsCibles: clamp(ex.poidsCibles + 2.5, 0, 999) }
+            : ex,
+        ),
       );
     const onDecKg = () =>
       setExercises((list) =>
         list.map((ex) =>
-        ex.id === item.id ? { ...ex, poidsCibles: clamp(ex.poidsCibles - 2.5, 0, 999 ) } :ex
-        )
+          ex.id === item.id
+            ? { ...ex, poidsCibles: clamp(ex.poidsCibles - 2.5, 0, 999) }
+            : ex,
+        ),
       );
 
     return (
@@ -230,12 +241,11 @@ export default function NewWorkoutScreen() {
           <View style={styles.exerciseMetaRow}>
             <Text style={styles.exerciseMeta}>
               {item.primaryMuscle && item.primaryMuscle.length > 0
-              ? item.primaryMuscle
-              : "Muscle non renseigné"}
+                ? item.primaryMuscle
+                : "Muscle non renseigné"}
             </Text>
           </View>
 
-          {/* Serie/rep/kg */}
           <View style={styles.configRow}>
             <View style={styles.configBlock}>
               <Text style={styles.configLabel}>Série</Text>
@@ -250,15 +260,16 @@ export default function NewWorkoutScreen() {
             <View style={styles.configBlock}>
               <Text style={styles.configLabel}>Kg</Text>
               <Stepper
-              value={item.poidsCibles.toFixed(1)}
-              onInc={onIncKg}
-              onDec={onDecKg} />
+                value={item.poidsCibles.toFixed(1)}
+                onInc={onIncKg}
+                onDec={onDecKg}
+              />
             </View>
           </View>
           <Pressable
-          style={styles.removeBtn}
-          onPress={() => handleRemoveExercise(item.id)}
-          disabled={saving}
+            style={styles.removeBtn}
+            onPress={() => handleRemoveExercise(item.id)}
+            disabled={saving}
           >
             <Text style={styles.removeBtnText}>Supp</Text>
           </Pressable>
@@ -269,7 +280,6 @@ export default function NewWorkoutScreen() {
 
   return (
     <SafeAreaView style={styles.container} edges={["top", "bottom"]}>
-      {/* HEADER gradient */}
       <LinearGradient
         colors={["#1a1a35", "#0f0f23"]}
         start={{ x: 0, y: 0 }}
@@ -294,7 +304,6 @@ export default function NewWorkoutScreen() {
           showsVerticalScrollIndicator={false}
           contentContainerStyle={{ paddingBottom: tabBarHeight + 140 }}
         >
-          {/* bloc info glass */}
           <BlurView intensity={25} tint="dark" style={styles.infoCard}>
             <Text style={styles.infoTitle}>Détails de la séance</Text>
             <Text style={styles.infoText}>
@@ -302,7 +311,6 @@ export default function NewWorkoutScreen() {
             </Text>
           </BlurView>
 
-          {/* champ titre */}
           <View style={styles.field}>
             <Text style={styles.label}>Nom de la séance</Text>
             <TextInput
@@ -316,7 +324,6 @@ export default function NewWorkoutScreen() {
             />
           </View>
 
-          {/* liste des exos ajoutés */}
           <View style={styles.field}>
             <Text style={styles.label}>Exercices ({exercises.length})</Text>
 
@@ -329,7 +336,7 @@ export default function NewWorkoutScreen() {
             ) : (
               <FlatList
                 data={exercises}
-                keyExtractor={(item) => item.id}
+                keyExtractor={(item, index) => `${item.id}-${index}`} // 👈 clé sûre
                 renderItem={renderExerciseRow}
                 scrollEnabled={false}
                 contentContainerStyle={{ gap: 10 }}
@@ -337,7 +344,6 @@ export default function NewWorkoutScreen() {
             )}
           </View>
 
-          {/* bouton ouvrir la bibliothèque */}
           <Pressable
             style={[styles.addExerciseBtn, saving && { opacity: 0.6 }]}
             onPress={() =>
@@ -357,7 +363,6 @@ export default function NewWorkoutScreen() {
         </ScrollView>
       </KeyboardAvoidingView>
 
-      {/* FOOTER CTA */}
       <View style={[styles.footer, { bottom: tabBarHeight + 12 }]}>
         <Pressable
           style={[styles.primaryBtn, saving && { opacity: 0.6 }]}
@@ -384,13 +389,11 @@ export default function NewWorkoutScreen() {
 }
 
 const styles = StyleSheet.create({
-  // fond
+  // ... 👇 tout le reste inchangé
   container: {
     flex: 1,
     backgroundColor: "#0f0f23",
   },
-
-  /* HEADER */
   header: {
     flexDirection: "row",
     alignItems: "center",
@@ -417,8 +420,6 @@ const styles = StyleSheet.create({
     fontSize: 12,
     marginTop: 4,
   },
-
-  /* bloc glass */
   infoCard: {
     marginHorizontal: 16,
     marginTop: -14,
@@ -437,8 +438,6 @@ const styles = StyleSheet.create({
     color: "#B1B9C7",
     fontSize: 13,
   },
-
-  /* champs */
   field: {
     marginHorizontal: 16,
     marginTop: 20,
@@ -459,7 +458,6 @@ const styles = StyleSheet.create({
     color: "#fff",
     fontSize: 15,
   },
-
   emptyBox: {
     backgroundColor: "rgba(12,17,27,0.3)",
     borderRadius: 14,
@@ -468,8 +466,6 @@ const styles = StyleSheet.create({
   emptyText: {
     color: "#8C9BAD",
   },
-
-  /* exo card */
   exerciseCard: {
     backgroundColor: "rgba(14,17,30,0.65)",
     borderRadius: 16,
@@ -512,10 +508,6 @@ const styles = StyleSheet.create({
     color: "#B1B9C7",
     fontSize: 12,
   },
-  exerciseIdDebug: {
-    color: "#475569",
-    fontSize: 11,
-  },
   removeBtn: {
     backgroundColor: "rgba(255,107,107,0.12)",
     paddingHorizontal: 10,
@@ -527,8 +519,6 @@ const styles = StyleSheet.create({
     fontWeight: "600",
     fontSize: 12,
   },
-
-  /* bouton ajouter */
   addExerciseBtn: {
     marginHorizontal: 16,
     marginTop: 16,
@@ -551,8 +541,6 @@ const styles = StyleSheet.create({
     fontWeight: "600",
     fontSize: 15,
   },
-
-  /* footer */
   footer: {
     position: "absolute",
     left: 16,
@@ -595,8 +583,12 @@ const styles = StyleSheet.create({
     alignSelf: "flex-start",
   },
   stepBtn: { padding: 4 },
-  stepVal: { color: "#FFFFFF", fontWeight: "700", minWidth: 28, textAlign: "center"},
-
+  stepVal: {
+    color: "#FFFFFF",
+    fontWeight: "700",
+    minWidth: 28,
+    textAlign: "center",
+  },
   configRow: {
     flexDirection: "row",
     gap: 12,
@@ -604,10 +596,7 @@ const styles = StyleSheet.create({
     marginBottom: 8,
     flexWrap: "wrap",
   },
-
-  configBlock: {
-    gap: 6,
-  },
+  configBlock: { gap: 6 },
   configLabel: {
     color: "#8C9BAD",
     fontSize: 11,
