@@ -40,6 +40,8 @@ export type Workout = {
   createdAt: string;
   updatedAt: string;
   items: WorkoutItem[];
+  scheduledFor?: string | null;
+  isTemplate?: boolean;
 };
 
 export type Paginated<T> = {

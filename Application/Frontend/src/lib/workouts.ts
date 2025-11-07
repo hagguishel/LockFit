@@ -39,8 +39,6 @@ export type CreateWorkoutInput = {
 
 /** Petits types utilitaires (si besoin pour composer des items localement) */
 export type PatchSerie = { reps?: number; weight?: number | null; rest?: number | null };
-export type PatchItem = { exerciseId?: string; order?: number; sets?: PatchSerie[] };
-export type UpdateWorkoutPatch = { items?: PatchItem[] };
 
 /**
  * ⚠️ Type RESTREINT pour PATCH /workouts/:id
@@ -163,10 +161,37 @@ export type NewWorkoutItemInput = {
   weight?: number;
   rest?: number;
 };
+  export async function duplicateWorkout(id: string) {
+    return httpPost<Workout>(`/workouts/${id}/duplicate`, {});
+  }
+
+  export async function scheduleWorkout(id: string, scheduledFor: string) {
+    return httpPost<Workout>(`/workouts/${id}/schedule`, { scheduledFor });
+  }
+
+  export type ScheduledItem = Pick<
+  Workout,
+  "id" | "title" | "finishedAt"
+  > & { scheduledFor: string | null; isTemplate?: boolean };
+
+  export async function listScheduled(from?: string, to?: string) {
+    const qs = new URLSearchParams();
+    if (from) qs.set("from", from);
+    if (to) qs.set("to", to);
+    const suffix = qs.toString() ? `?${qs.toString()}` : "";
+    { try {
+      return await httpGet<ScheduledItem[]>(`/workouts/scheduled${suffix}`);
+    } catch (e: any) {
+      if (e?.status === 404) return [];
+      throw e;
+    }
+  }
+}
 
 export async function addWorkoutItem(_workoutId: string, _input: NewWorkoutItemInput) {
   throw new Error(
     "addWorkoutItem désactivé: pas d'endpoint backend pour ajouter un item à une séance. " +
       "Implémente POST /workouts/:id/items côté API si tu veux cette fonctionnalité."
   );
+
 }
