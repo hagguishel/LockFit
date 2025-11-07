@@ -70,7 +70,7 @@ export default function MfaScreen() {
       }
 
       Alert.alert("Succès", data?.message || "MFA vérifiée ✅", [
-        { text: "OK", onPress: () => router.replace("/(tabs)/index") },
+        { text: "OK", onPress: () => router.replace("/(tabs)") },
       ]);
     } catch (e) {
       Alert.alert("Erreur réseau", "Impossible de joindre le serveur.");
