@@ -51,6 +51,7 @@ export default function TabsLayout() {
       {/* On enlève les routes qui apparaissent sur l'application*/}
       <Tabs.Screen name="workouts/new" options={{ href: null }} />
         <Tabs.Screen name="workouts/[id]" options={{ href: null }} />
+        <Tabs.Screen name="workouts/workoutlive" options={{ href: null }} />
 
 
       {/* Social -> app/(tabs)/index.tsx */}

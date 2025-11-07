@@ -212,7 +212,7 @@ export class AuthService {
       try {
         const minutes = Math.max(1, Math.ceil(MFA_TTL_SEC / 60));
         if (typeof (this.mail as any).sendMfaCode === 'function') {
-          await (this.mail as any).sendMfaCode(user.email, code, minutes);
+          await (this.mail as any).sendMfaCode(user.email, code);
         }
       } catch {
         // on n'empêche pas le flux MFA si l'email échoue

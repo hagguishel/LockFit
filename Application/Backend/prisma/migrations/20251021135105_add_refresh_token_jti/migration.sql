@@ -1,17 +1,23 @@
 /*
-  Warnings:
-
-  - A unique constraint covering the columns `[jti]` on the table `refresh_tokens` will be added. If there are existing duplicate values, this will fail.
-  - Added the required column `expiresAt` to the `refresh_tokens` table without a default value. This is not possible if the table is not empty.
-  - Added the required column `jti` to the `refresh_tokens` table without a default value. This is not possible if the table is not empty.
-
+  ✅ Correction :
+  - On supprime l'ajout de la colonne `expiresAt` (elle existe déjà)
+  - On garde seulement `jti` et les index associés
+  - On protège les ajouts avec des vérifications "IF NOT EXISTS" pour éviter tout crash
 */
--- AlterTable
-ALTER TABLE "refresh_tokens" ADD COLUMN     "expiresAt" TIMESTAMP(3) NOT NULL,
-ADD COLUMN     "jti" TEXT NOT NULL;
 
--- CreateIndex
-CREATE UNIQUE INDEX "refresh_tokens_jti_key" ON "refresh_tokens"("jti");
+DO $$
+BEGIN
+  -- Ajout de la colonne jti uniquement si elle n'existe pas déjà
+  IF NOT EXISTS (
+    SELECT 1 FROM information_schema.columns
+    WHERE table_name = 'refresh_tokens' AND column_name = 'jti'
+  ) THEN
+    ALTER TABLE "refresh_tokens" ADD COLUMN "jti" TEXT NOT NULL;
+  END IF;
+END $$;
 
--- CreateIndex
-CREATE INDEX "refresh_tokens_expiresAt_idx" ON "refresh_tokens"("expiresAt");
+-- Création de l'index unique sur jti si non existant
+CREATE UNIQUE INDEX IF NOT EXISTS "refresh_tokens_jti_key" ON "refresh_tokens"("jti");
+
+-- Création de l'index sur expiresAt si non existant
+CREATE INDEX IF NOT EXISTS "refresh_tokens_expiresAt_idx" ON "refresh_tokens"("expiresAt");
