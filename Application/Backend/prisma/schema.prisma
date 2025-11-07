@@ -20,8 +20,8 @@ model Workout {
   PlanningJour PlanningJour[]
   items        WorkoutItem[]
 
-  utilisateurId String
-  utilisateur   Utilisateur   @relation("UtilisateurWorkouts", fields: [utilisateurId], references: [id], onDelete: Cascade)
+  utilisateurId String?
+  utilisateur   Utilisateur?   @relation("UtilisateurWorkouts", fields: [utilisateurId], references: [id], onDelete: Cascade)
 }
 
 model Planning {
