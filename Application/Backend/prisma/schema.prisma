@@ -7,6 +7,7 @@ datasource db {
   provider  = "postgresql"
   url       = env("DATABASE_URL")
   directUrl = env("DIRECT_URL")
+  shadowDatabaseUrl = env("SHADOW_DATABASE_URL")
 }
 
 model Workout {
@@ -18,6 +19,9 @@ model Workout {
   finishedAt   DateTime?
   PlanningJour PlanningJour[]
   items        WorkoutItem[]
+
+  utilisateurId String
+  utilisateur   Utilisateur   @relation("UtilisateurWorkouts", fields: [utilisateurId], references: [id], onDelete: Cascade)
 }
 
 model Planning {
@@ -60,6 +64,7 @@ model Utilisateur {
   emailVerification EmailVerification?
   passwordResets    PasswordReset[]
   emailVerifiedAt   DateTime?
+  workouts          Workout[]         @relation("UtilisateurWorkouts")
 }
 
 model RefreshToken {
