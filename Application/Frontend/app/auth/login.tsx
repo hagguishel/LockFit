@@ -45,7 +45,10 @@ export default function LoginRoute() {
       // Cas 1 : MFA requis
       if (isMfaRequired(res)) {
         console.log("🔵 [LOGIN] MFA requis, redirection...");
-        router.push({ pathname: "/auth/mfa", params: { sid: res.tempSessionId, email } });
+        router.push({
+          pathname: "/auth/mfa",
+          params: { tempSessionId: res.tempSessionId, email },
+        });
         return;
       }
 
