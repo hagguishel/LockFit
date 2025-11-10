@@ -46,10 +46,12 @@ export class WorkoutsController {
   }
     @Get('scheduled')
   listScheduled(
+    @Req() req: Request,
     @Query('from') from?: string,
     @Query('to') to?: string,
   ) {
-    return this.service.listScheduled({ from, to });
+    const userId = (req.user as any).sub || (req.user as any).id;
+    return this.service.listScheduled(userId, { from, to });
   }
   //GET /api/v1/workouts/:id - détail d'une séance, @Param ('id') lit le segment url
   @Get(':id')
@@ -104,16 +106,19 @@ export class WorkoutsController {
   }
 
   @Post(':id/duplicate')
-  duplicate(@Param('id') id: string) {
-    return this.service.duplicateWorkout(id);
+  duplicate(@Param('id') id: string, @Req() req: Request) {
+    const userId = (req.user as any).sub || (req.user as any).id;
+    return this.service.duplicateWorkout(id, userId);
   }
 
   @Post(':id/schedule')
   schedule(
     @Param('id') id: string,
     @Body('scheduledFor') scheduledFor: string,
+    @Req() req: Request,
   ) {
-    return this.service.scheduleWorkout(id, scheduledFor);
+    const userId = (req.user as any).sub || (req.user as any).id;
+    return this.service.scheduleWorkout(id, scheduledFor, userId);
   }
 
 }

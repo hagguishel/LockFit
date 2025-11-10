@@ -9,8 +9,6 @@ import { CreateWorkoutDto } from './dto/create-workout.dto';
 import { UpdateWorkoutDto } from './dto/update-workout.dto';
 import { UpdatesetDto } from './dto/update-set.dto';
 
-
-
 @Injectable()
 export class WorkoutsService {
   constructor(private readonly prisma: PrismaService) {}
@@ -216,7 +214,8 @@ export class WorkoutsService {
   }
 
   // dupliquer un workout (copier coller sans jamais completed)
-  async duplicateWorkout(id: string) {
+  async duplicateWorkout(id: string, userId: string) {
+    await this.assertOwned(id, userId)
     const src = await this.prisma.workout.findUnique({
       where: { id },
       include: { items: { include: { sets: true } } },
@@ -231,6 +230,7 @@ export class WorkoutsService {
           isTemplate: false,
           scheduledFor: null,
           finishedAt: null,
+          utilisateur: { connect: { id: userId } },
         },
       });
 
@@ -255,25 +255,28 @@ export class WorkoutsService {
           });
         }
       }
-      return newWork;
+      return newWork.id;
     });
-    return this.findOne(created.id);
+    return this.findOne(created, userId);
   }
   // Planifier un workout: scheduledFor = date ISO
-  async scheduleWorkout(id: string, scheduledForISO: string) {
-    const w = await this.prisma.workout.findUnique({ where: { id } });
-    if (!w) throw new NotFoundException('Workout introuvable');
-
+  async scheduleWorkout(id: string, scheduledForISO: string, userId: string) {
+    await this.assertOwned(id, userId);
     const when = this.toDateOrThrow(scheduledForISO);
     return this.prisma.workout.update({
-      where: { id },
+      where:{ id },
       data: { scheduledFor: when },
       include: this.includeRelations,
     });
   }
   // Lister leq workout planifier entre from/to (ISO)
-  async listScheduled(params?: {from?: string; to?: string }) {
-    const where: any = { scheduledFor: { not: null } };
+  async listScheduled(
+    userId: string,
+    params?: { from?: string; to?: string },
+  ) {
+    const where: any = {
+      utilisateurId: userId,
+      scheduledFor: { not: null } };
 
     if (params?.from || params?.to) {
       where.scheduledFor = {

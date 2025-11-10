@@ -11,19 +11,18 @@ datasource db {
 }
 
 model Workout {
-  id           String         @id @default(cuid())
-  title        String
-  note         String?
-  createdAt    DateTime       @default(now())
-  updatedAt    DateTime       @updatedAt
-  finishedAt   DateTime?
-  isTemplate   Boolean        @default(false)
-  scheduledFor DateTime?
-  PlanningJour PlanningJour[]
-  items        WorkoutItem[]
-
-  utilisateurId String
-  utilisateur   Utilisateur   @relation("UtilisateurWorkouts", fields: [utilisateurId], references: [id], onDelete: Cascade)
+  id            String         @id @default(cuid())
+  title         String
+  note          String?
+  createdAt     DateTime       @default(now())
+  updatedAt     DateTime       @updatedAt
+  finishedAt    DateTime?
+  isTemplate    Boolean        @default(false)
+  scheduledFor  DateTime?
+  utilisateurId String?
+  PlanningJour  PlanningJour[]
+  utilisateur   Utilisateur?   @relation("UtilisateurWorkouts", fields: [utilisateurId], references: [id], onDelete: Cascade, onUpdate: NoAction)
+  items         WorkoutItem[]
 }
 
 model Planning {
@@ -62,9 +61,7 @@ model Utilisateur {
   createdAt         DateTime           @default(now())
   updatedAt         DateTime           @updatedAt
   emailVerifiedAt   DateTime?
-  emailVerifiedAt   DateTime?
   emailVerification EmailVerification?
-  MfaChallenge      MfaChallenge[]
   MfaChallenge      MfaChallenge[]
   passwordResets    PasswordReset[]
   workouts          Workout[]          @relation("UtilisateurWorkouts")
