@@ -2,9 +2,9 @@ import React, { useEffect, useState, useCallback } from "react";
 import { View, Text, ActivityIndicator, TextInput, Button, Alert, FlatList } from "react-native";
 import type { NativeStackScreenProps } from "@react-navigation/native-stack";
 import type { RootStackParamList } from "app/navigation/NavigateurApp";
-// ✅ CORRECTION 1 : Import sans WorkoutItem (on va le définir localement)
 import { getWorkout, addWorkoutItem } from "@/api/workouts";
 import type { Workout, WorkoutItem } from "@/types/workout";
+
 type Props = NativeStackScreenProps<RootStackParamList, "Détails">;
 
 export default function DetailsEntrainement({ route, navigation }: Props) {
@@ -22,7 +22,6 @@ export default function DetailsEntrainement({ route, navigation }: Props) {
     setLoading(true);
     try {
       const w = await getWorkout(id);
-      // ✅ CORRECTION 3 : Vérification que w existe
       if (!w) {
         Alert.alert("Erreur", "Workout introuvable.");
         navigation.goBack();
@@ -34,7 +33,7 @@ export default function DetailsEntrainement({ route, navigation }: Props) {
     } finally {
       setLoading(false);
     }
-  }, [id, navigation]); // ✅ Ajout de navigation dans les dépendances
+  }, [id, navigation]);
 
   useEffect(() => { load(); }, [load]);
 
@@ -42,11 +41,11 @@ export default function DetailsEntrainement({ route, navigation }: Props) {
     const name = exo.trim();
     if (!name) return;
     try {
-
       const currentItems: WorkoutItem[] = (data?.items ?? []) as WorkoutItem[];
       const nextOrder = currentItems.length + 1;
 
-      const item: WorkoutItem = {
+      // ✅ Objet pour l'affichage optimiste
+      const itemForDisplay: WorkoutItem = {
         exerciseId: name,
         order: nextOrder,
         sets: [{
@@ -55,23 +54,32 @@ export default function DetailsEntrainement({ route, navigation }: Props) {
           rest: Number(rest) || 90,
         }],
       };
-      // optimistic: affiche direct
+      
+      // Affichage optimiste
       setData((prev: Workout | null) =>
-        (prev ? { ...prev, items: [...(prev.items ?? [] as WorkoutItem[]), item ] } : prev
-    ));
+        prev ? { ...prev, items: [...(prev.items ?? [] as WorkoutItem[]), itemForDisplay] } : prev
+      );
 
-      // sync API
-      const updated = await addWorkoutItem(id, item);
-      // ✅ CORRECTION 4 : Vérification que updated existe
+      // ✅ Appel API avec le bon format (NewWorkoutItemInput)
+      const updated = await addWorkoutItem(id, {
+        exerciseId: name,
+        reps: Number(reps) || 8,
+        weight: weight ? Number(weight) : undefined,
+        rest: Number(rest) || 90,
+      });
+      
       if (!updated) {
         throw new Error("Réponse invalide du serveur");
       }
       setData(updated);
 
-      setExo(""); setReps("8"); setWeight(""); setRest("90");
+      // Reset du formulaire
+      setExo("");
+      setReps("8");
+      setWeight("");
+      setRest("90");
     } catch (e: any) {
       Alert.alert("Erreur", e?.message ?? "Ajout impossible.");
-      // reload si échec pour resync
       load();
     }
   }
@@ -87,15 +95,34 @@ export default function DetailsEntrainement({ route, navigation }: Props) {
 
       <View style={{ marginTop: 12 }}>
         <Text style={{ fontWeight: "700" }}>Ajouter un exercice</Text>
-        <TextInput placeholder="Ex: Tractions" value={exo} onChangeText={setExo}
-          style={{ borderWidth: 1, borderColor: "#555", padding: 8, borderRadius: 8, marginTop: 6 }} />
+        <TextInput 
+          placeholder="Ex: Tractions" 
+          value={exo} 
+          onChangeText={setExo}
+          style={{ borderWidth: 1, borderColor: "#555", padding: 8, borderRadius: 8, marginTop: 6 }} 
+        />
         <View style={{ flexDirection: "row", gap: 8, marginTop: 6 }}>
-          <TextInput placeholder="reps" keyboardType="numeric" value={reps} onChangeText={setReps}
-            style={{ flex: 1, borderWidth: 1, borderColor: "#555", padding: 8, borderRadius: 8 }} />
-          <TextInput placeholder="poids" keyboardType="numeric" value={weight} onChangeText={setWeight}
-            style={{ flex: 1, borderWidth: 1, borderColor: "#555", padding: 8, borderRadius: 8 }} />
-          <TextInput placeholder="repos (s)" keyboardType="numeric" value={rest} onChangeText={setRest}
-            style={{ flex: 1, borderWidth: 1, borderColor: "#555", padding: 8, borderRadius: 8 }} />
+          <TextInput 
+            placeholder="reps" 
+            keyboardType="numeric" 
+            value={reps} 
+            onChangeText={setReps}
+            style={{ flex: 1, borderWidth: 1, borderColor: "#555", padding: 8, borderRadius: 8 }} 
+          />
+          <TextInput 
+            placeholder="poids" 
+            keyboardType="numeric" 
+            value={weight} 
+            onChangeText={setWeight}
+            style={{ flex: 1, borderWidth: 1, borderColor: "#555", padding: 8, borderRadius: 8 }} 
+          />
+          <TextInput 
+            placeholder="repos (s)" 
+            keyboardType="numeric" 
+            value={rest} 
+            onChangeText={setRest}
+            style={{ flex: 1, borderWidth: 1, borderColor: "#555", padding: 8, borderRadius: 8 }} 
+          />
         </View>
         <Button title="Ajouter l'exercice" onPress={onAddItem} />
       </View>
@@ -116,10 +143,10 @@ export default function DetailsEntrainement({ route, navigation }: Props) {
         )}
       />
 
-      {/* ✅ CORRECTION 5 : NOM DE ROUTE CORRIGÉ (sans accent) */}
-      <Button title="Démarrer la séance" onPress={() => navigation.navigate("Entrainement", { id })} />
-      {/* ANCIEN : "Entraînement" ❌ */}
-      {/* NOUVEAU : "Entrainement" ✅ */}
+      <Button 
+        title="Démarrer la séance" 
+        onPress={() => navigation.navigate("Entrainement", { id })} 
+      />
     </View>
   );
 }
