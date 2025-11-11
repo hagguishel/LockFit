@@ -271,15 +271,6 @@ export default function WorkoutDetailScreen() {
               />
               <Text style={styles.primaryBtnText}>Commencer la séance</Text>
             </Pressable>
-            <Pressable
-            style={[styles.secondaryBtn, planningLoading && { opacity: 0.5}]}
-            disabled={planningLoading}
-            onPress={() => setShowPicker(true)}
-            >
-              <Text style={styles.secondaryBtnText}>
-                {planningDays > 0 ? "Replanifier" : "Planifier"}
-              </Text>
-            </Pressable>
 
             {/* Marquer comme terminee */}
             <Pressable

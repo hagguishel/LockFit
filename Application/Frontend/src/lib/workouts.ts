@@ -56,20 +56,49 @@ export type UpdateWorkoutBody = Partial<
  * - Filtre possible par "from" et "to" (ISO string)
  * - Retourne { items, total }
  */
+// ─────────────────────────────────────────────────────────────────────────────
+// listWorkouts : maintenant on renvoie à la fois les séances réelles (/workouts)
+// ET, si un intervalle (from/to) est fourni, on AJOUTE les planifiées
+// (/workouts/scheduled), puis on fusionne sans doublons.
+// ─────────────────────────────────────────────────────────────────────────────
 export async function listWorkouts(params?: { from?: string; to?: string }): Promise<ListResponse> {
   const qs = new URLSearchParams();
   if (params?.from) qs.set("from", params.from);
   if (params?.to) qs.set("to", params.to);
   const suffix = qs.toString() ? `?${qs.toString()}` : "";
 
-  const data = await httpGet<ListResponse>(`/workouts${suffix}`);
+  const base = await httpGet<ListResponse>(`/workouts${suffix}`);
+  const baseItems = base?.items ?? [];
 
-  // Normalisation pour éviter null/undefined côté UI
-  return {
-    items: data?.items ?? [],
-    total: typeof data?.total === "number" ? data.total : (data?.items?.length ?? 0),
-  };
+  let scheduledItems: Workout[] = [];
+  if (params?.from || params?.to) {
+    try {
+      const scheduled = await listScheduled(params?.from, params?.to);
+      const fallbackDate = new Date(0).toISOString(); // 1970-01-01T00:00:00.000Z
+      scheduledItems = (scheduled ?? []).map(s => ({
+        id: s.id,
+        title: s.title,
+        finishedAt: s.finishedAt ?? null,
+        items: [],
+        createdAt: (s as any).createdAt ?? fallbackDate,
+        updatedAt: (s as any).updatedAt ?? fallbackDate,
+      })) as Workout[];
+    } catch {
+      scheduledItems = [];
+    }
+  }
+
+  const seen = new Set<string>();
+  const merged = [...baseItems, ...scheduledItems].filter(w => {
+    if (!w?.id) return false;
+    if (seen.has(w.id)) return false;
+    seen.add(w.id);
+    return true;
+  });
+
+  return { items: merged, total: merged.length };
 }
+
 
 /**
  * GET /workouts/:id
@@ -179,13 +208,12 @@ export type NewWorkoutItemInput = {
     if (from) qs.set("from", from);
     if (to) qs.set("to", to);
     const suffix = qs.toString() ? `?${qs.toString()}` : "";
-    { try {
+     try {
       return await httpGet<ScheduledItem[]>(`/workouts/scheduled${suffix}`);
     } catch (e: any) {
       if (e?.status === 404) return [];
       throw e;
     }
-  }
 }
 
 export async function addWorkoutItem(_workoutId: string, _input: NewWorkoutItemInput) {
