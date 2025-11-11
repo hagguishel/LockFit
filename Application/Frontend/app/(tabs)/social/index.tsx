@@ -31,7 +31,7 @@ const SocialScreen: React.FC = () => {
   // on recrée exactement ton post du screen
   const [post, setPost] = useState({
     id: 'lockfit-post-1',
-    username: 'FitnessMax',
+    username: 'FitAudrey',
     avatar:
       'https://images.unsplash.com/photo-1524504388940-b1c1722653e1?w=200&h=200&fit=crop&crop=face',
     content:
@@ -261,7 +261,7 @@ const styles = StyleSheet.create({
   scroll: {
     flex: 1,
     paddingHorizontal: 16,
-    paddingTop: 20,
+    paddingTop: 50,
   },
   header: {
     alignItems: 'center',

@@ -7,6 +7,7 @@ import {
   ActivityIndicator,
   ScrollView,
   Image,
+  TouchableOpacity,
 } from "react-native";
 import { useState, useEffect } from "react";
 import { router } from "expo-router";
@@ -18,6 +19,11 @@ export default function ProfileScreen() {
   const [loadingMfa, setLoadingMfa] = useState(false);
   const [mfaEnabled, setMfaEnabled] = useState(false);
 
+  // 👇 pour les onglets factices
+  const [activeTab, setActiveTab] = useState<"posts" | "stats" | "trophies">(
+    "posts"
+  );
+
   // ============================
   // Charger /auth/me au montage
   // ============================
@@ -27,7 +33,6 @@ export default function ProfileScreen() {
         const tokens = await loadTokens();
         if (!tokens?.access) return;
 
-        // on caste en any pour éviter l'erreur TS "mfaEnabled n'existe pas"
         const me = (await httpGet("/auth/me", {
           token: tokens.access,
         })) as any;
@@ -92,7 +97,6 @@ export default function ProfileScreen() {
           setMfaEnabled(true);
           Alert.alert("Succès", "MFA activée !");
         } else {
-          // même si le backend ne renvoie rien
           setMfaEnabled(true);
           Alert.alert("Succès", "MFA activée !");
         }
@@ -126,10 +130,12 @@ export default function ProfileScreen() {
       <ScrollView
         contentContainerStyle={{
           padding: 16,
-          paddingBottom: 32,
+          paddingBottom: 40,
           alignItems: "center",
         }}
+        showsVerticalScrollIndicator={false}
       >
+        {/* Titre */}
         <Text
           style={{
             color: "#fff",
@@ -141,6 +147,7 @@ export default function ProfileScreen() {
           Mon profil
         </Text>
 
+        {/* CARTE EXISTANTE (on ne touche pas) */}
         <View
           style={{
             width: "100%",
@@ -149,6 +156,7 @@ export default function ProfileScreen() {
             borderRadius: 18,
             padding: 20,
             alignItems: "center",
+            marginBottom: 18,
           }}
         >
           {/* Avatar */}
@@ -164,13 +172,14 @@ export default function ProfileScreen() {
             }}
           >
             <Image
-              source={{ uri: "https://i.pravatar.cc/150?img=12" }}
+              source={{ uri: "https://i.imgur.com/5VfvdET.png" }}
               style={{ width: "100%", height: "100%" }}
+              resizeMode="cover"
             />
           </View>
 
           <Text style={{ color: "#fff", fontSize: 18, fontWeight: "700" }}>
-            @FitnessMax
+            @Haguinounet
           </Text>
           <Text
             style={{
@@ -200,19 +209,21 @@ export default function ProfileScreen() {
             </View>
             <View style={{ alignItems: "center" }}>
               <Text style={{ color: "#fff", fontSize: 18, fontWeight: "700" }}>
-                0
+                3
               </Text>
               <Text style={{ color: "#fff", fontSize: 12 }}>Trophées</Text>
             </View>
             <View style={{ alignItems: "center" }}>
               <Text style={{ color: "#fff", fontSize: 18, fontWeight: "700" }}>
-                0
+                12
               </Text>
-              <Text style={{ color: "#fff", fontSize: 12 }}>Entraînements</Text>
+              <Text style={{ color: "#fff", fontSize: 12 }}>
+                Entraînements
+              </Text>
             </View>
           </View>
 
-          {/* Bloc actions */}
+          {/* Bloc actions réelles */}
           <View style={{ width: "100%", gap: 10 }}>
             {/* Toggle MFA */}
             <Pressable
@@ -263,6 +274,285 @@ export default function ProfileScreen() {
               )}
             </Pressable>
           </View>
+        </View>
+
+        {/* ================================
+            BLOC FICTIF inspiré de Figma
+           ================================ */}
+        <View
+          style={{
+            width: "100%",
+            maxWidth: 420,
+            gap: 14,
+          }}
+        >
+          {/* Onglets */}
+          <View
+            style={{
+              flexDirection: "row",
+              backgroundColor: "#0E1120",
+              borderRadius: 16,
+              padding: 4,
+              gap: 4,
+            }}
+          >
+            <TouchableOpacity
+              onPress={() => setActiveTab("posts")}
+              style={{
+                flex: 1,
+                backgroundColor:
+                  activeTab === "posts" ? "#00ff88" : "transparent",
+                borderRadius: 12,
+                paddingVertical: 10,
+                alignItems: "center",
+              }}
+            >
+              <Text
+                style={{
+                  color: activeTab === "posts" ? "#0f0f23" : "#D2D4DD",
+                  fontWeight: "600",
+                }}
+              >
+                Posts
+              </Text>
+            </TouchableOpacity>
+
+            <TouchableOpacity
+              onPress={() => setActiveTab("stats")}
+              style={{
+                flex: 1,
+                backgroundColor:
+                  activeTab === "stats" ? "#00ff88" : "transparent",
+                borderRadius: 12,
+                paddingVertical: 10,
+                alignItems: "center",
+              }}
+            >
+              <Text
+                style={{
+                  color: activeTab === "stats" ? "#0f0f23" : "#D2D4DD",
+                  fontWeight: "600",
+                }}
+              >
+                Stats
+              </Text>
+            </TouchableOpacity>
+
+            <TouchableOpacity
+              onPress={() => setActiveTab("trophies")}
+              style={{
+                flex: 1,
+                backgroundColor:
+                  activeTab === "trophies" ? "#00ff88" : "transparent",
+                borderRadius: 12,
+                paddingVertical: 10,
+                alignItems: "center",
+              }}
+            >
+              <Text
+                style={{
+                  color: activeTab === "trophies" ? "#0f0f23" : "#D2D4DD",
+                  fontWeight: "600",
+                }}
+              >
+                Trophées
+              </Text>
+            </TouchableOpacity>
+          </View>
+
+          {/* CONTENU DES ONGLETS */}
+          {activeTab === "posts" && (
+            <View
+              style={{
+                backgroundColor: "#101628",
+                borderRadius: 16,
+                padding: 14,
+                gap: 10,
+              }}
+            >
+              <Text
+                style={{ color: "#fff", fontSize: 15, fontWeight: "600" }}
+              >
+                Vos posts
+              </Text>
+              {/* post factice */}
+              <View
+                style={{
+                  backgroundColor: "#141A2E",
+                  borderRadius: 14,
+                  padding: 12,
+                  gap: 6,
+                }}
+              >
+                <Text style={{ color: "#8A90A0", fontSize: 12 }}>
+                  12/10/2025
+                </Text>
+                <Text style={{ color: "#fff" }}>
+                  “Push Day terminé 💪 6 exos - 75 min.”
+                </Text>
+                <View
+                  style={{ flexDirection: "row", gap: 14, marginTop: 4 }}
+                >
+                  <Text style={{ color: "#fff", fontSize: 12 }}>❤️ 124</Text>
+                  <Text style={{ color: "#fff", fontSize: 12 }}>💬 3</Text>
+                </View>
+              </View>
+
+              <View
+                style={{
+                  backgroundColor: "#141A2E",
+                  borderRadius: 14,
+                  padding: 12,
+                  gap: 6,
+                }}
+              >
+                <Text style={{ color: "#8A90A0", fontSize: 12 }}>
+                  05/10/2025
+                </Text>
+                <Text style={{ color: "#fff" }}>
+                  “Nouveau PR au développé couché 🔥”
+                </Text>
+                <View
+                  style={{ flexDirection: "row", gap: 14, marginTop: 4 }}
+                >
+                  <Text style={{ color: "#fff", fontSize: 12 }}>❤️ 89</Text>
+                  <Text style={{ color: "#fff", fontSize: 12 }}>💬 1</Text>
+                </View>
+              </View>
+
+              <Text style={{ color: "#8A90A0", fontSize: 12, marginTop: 2 }}>
+                Historique visible bientôt...
+              </Text>
+            </View>
+          )}
+
+          {activeTab === "stats" && (
+            <View
+              style={{
+                backgroundColor: "#101628",
+                borderRadius: 16,
+                padding: 14,
+                gap: 10,
+              }}
+            >
+              <Text
+                style={{ color: "#fff", fontSize: 15, fontWeight: "600" }}
+              >
+                Vos stats
+              </Text>
+
+              <View style={{ flexDirection: "row", gap: 10 }}>
+                <View
+                  style={{
+                    flex: 1,
+                    backgroundColor: "#141A2E",
+                    borderRadius: 14,
+                    padding: 12,
+                    alignItems: "center",
+                  }}
+                >
+                  <Text style={{ color: "#fff", fontSize: 18, fontWeight: "700" }}>
+                    12
+                  </Text>
+                  <Text style={{ color: "#8A90A0", fontSize: 12 }}>
+                    Entraînements
+                  </Text>
+                </View>
+                <View
+                  style={{
+                    flex: 1,
+                    backgroundColor: "#141A2E",
+                    borderRadius: 14,
+                    padding: 12,
+                    alignItems: "center",
+                  }}
+                >
+                  <Text style={{ color: "#fff", fontSize: 18, fontWeight: "700" }}>
+                    1 240
+                  </Text>
+                  <Text style={{ color: "#8A90A0", fontSize: 12 }}>
+                    Volume (kg)
+                  </Text>
+                </View>
+              </View>
+
+              <View
+                style={{
+                  backgroundColor: "#141A2E",
+                  borderRadius: 14,
+                  padding: 12,
+                  marginTop: 2,
+                }}
+              >
+                <Text style={{ color: "#fff", marginBottom: 4 }}>
+                  Progression
+                </Text>
+                <Text style={{ color: "#8A90A0", fontSize: 12 }}>
+                  Graphique à venir 📈
+                </Text>
+              </View>
+            </View>
+          )}
+
+          {activeTab === "trophies" && (
+            <View
+              style={{
+                backgroundColor: "#101628",
+                borderRadius: 16,
+                padding: 14,
+                gap: 10,
+              }}
+            >
+              <Text
+                style={{ color: "#fff", fontSize: 15, fontWeight: "600" }}
+              >
+                Trophées (3/6)
+              </Text>
+
+              {/* Trophée débloqué */}
+              <View
+                style={{
+                  backgroundColor: "rgba(0,255,136,0.12)",
+                  borderColor: "#00ff88",
+                  borderWidth: 1,
+                  borderRadius: 14,
+                  padding: 12,
+                  gap: 4,
+                }}
+              >
+                <Text style={{ color: "#fff", fontWeight: "600" }}>
+                  🎯 Premier pas
+                </Text>
+                <Text style={{ color: "#D2D4DD", fontSize: 12 }}>
+                  Premier entraînement complété
+                </Text>
+                <Text style={{ color: "#00ff88", fontSize: 12, marginTop: 2 }}>
+                  Débloqué ✓
+                </Text>
+              </View>
+
+              {/* Trophée lock */}
+              <View
+                style={{
+                  backgroundColor: "#141A2E",
+                  borderRadius: 14,
+                  padding: 12,
+                  gap: 4,
+                  opacity: 0.6,
+                }}
+              >
+                <Text style={{ color: "#fff", fontWeight: "600" }}>
+                  🔒 Régularité
+                </Text>
+                <Text style={{ color: "#D2D4DD", fontSize: 12 }}>
+                  7 jours consécutifs d'entraînement
+                </Text>
+                <Text style={{ color: "#8A90A0", fontSize: 11, marginTop: 1 }}>
+                  Entraînez-vous 7 jours de suite
+                </Text>
+              </View>
+            </View>
+          )}
         </View>
       </ScrollView>
     </SafeAreaView>
