@@ -248,8 +248,3 @@ Ce document contient **toutes les sections obligatoires** de la Phase 5 :
 - Shel (Haggui) — Développeur Full Stack / Mobile  
 - Tom — Développeur Full Stack  
 
----
-
-# 🎉 Document Finalisé
-
-Tu peux **copier-coller ce fichier .md** tel quel dans ton rendu Holberton.
